@@ -102,17 +102,25 @@ import json
 #     data = data_processing(all_people_poses)
 #     return data
 
-def get_data_from_json(json_filepath):
+def get_video_data_from_json(json_filepath):
     with open(json_filepath) as f:
-        data = np.array(json.load(f))  # (1, 580, 30, 3)
+        data = json.load(f)  # (1, 580, 30, 3)
+        res = []
+        for person in data:
+            for_person = []
+            for i, frame in enumerate(person):
+                if frame is not None:
+                    for_person.append(frame)
+            res.append(np.array(for_person))
+        data = res
     data = data_processing(data)
     return data
 
 
 def data_processing(data):
-    gl_root_y, gl_root_x, gl_root_z = 0, -10000, 0
+    gl_root_x, gl_root_y, gl_root_z = 0, -1000, 0
     processed_data = []
-    scale_factor = 1/10
+    scale_factor = 1 / 10
 
     landmark_names = ['hip', 'left_hip', 'right_hip', 'bell', 'left_knee', 'right_knee', 'spin', 'left_ankle',
                       'right_ankle', 'thor', 'left_foot_index', 'right_foot_index', 'neck', 'left_collarbone',
@@ -131,11 +139,14 @@ def data_processing(data):
 
     for person_frames in data:
         processed_frames_for_one_person = []
-        for frame_landmarks in person_frames:
+        for frame, frame_landmarks in enumerate(person_frames):
             processed_landmark4frame = {}
+            # gl_root_y_new = gl_root_y
+            # for point in data[key_pers_ind][frame]:
+            #     gl_root_y_new = max(gl_root_y_new, point[1])
             if frame_landmarks is not None:
                 for ind, point in enumerate(frame_landmarks):
-                    processed_landmark4frame[landmark_names[ind]] = np.array([-(point[0] - gl_root_x) * scale_factor,
+                    processed_landmark4frame[landmark_names[ind]] = np.array([(point[0] - gl_root_x) * scale_factor,
                                                                               -(point[1] - gl_root_y) * scale_factor,
                                                                               -(point[2] - gl_root_z) * scale_factor])
                 processed_landmark4frame['head_center'] = (processed_landmark4frame['head_bot'] +
@@ -150,5 +161,43 @@ def data_processing(data):
     return processed_data
 
 
+def get_image_data_from_json(json_filepath):
+    with open(json_filepath) as f:
+        data = json.load(f)  # (1, 580, 30, 3)
+        if len(data) > 0:
+            data = np.array(data)
+            data = data_for_bind_pose_processing(data)
+        else:
+            return False, []
+    return True, data
+
+
+def data_for_bind_pose_processing(data, scale_k=10):
+    gl_root_x, gl_root_y, gl_root_z = 0, -1000, 0
+    scale_factor = 1 / scale_k  # надо доработать, чтобы здесь в знаменателе стоял коэффициент, передаваемый в функцию
+
+    landmark_names = ['hip', 'left_hip', 'right_hip', 'bell', 'left_knee', 'right_knee', 'spin', 'left_ankle',
+                      'right_ankle', 'thor', 'left_foot_index', 'right_foot_index', 'neck', 'left_collarbone',
+                      'right_collarbone', 'head_bot', 'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow',
+                      'left_wrist', 'right_wrist', 'left_han', 'right_han', 'nose', 'left_eye', 'left_ear', 'right_eye',
+                      'right_ear', 'head_top']
+
+    for point in data:
+        gl_root_y = max(gl_root_y, point[1])
+    gl_root_x, gl_root_z = data[0][0], data[0][2]
+    processed_data = {}
+    for ind, point in enumerate(data):
+        if point is not None:
+            processed_data[landmark_names[ind]] = np.array([(point[0] - gl_root_x) * scale_factor,
+                                                            -(point[1] - gl_root_y) * scale_factor,
+                                                            -(point[2] - gl_root_z) * scale_factor])
+    processed_data['head_center'] = (processed_data['head_bot'] +
+                                     processed_data['head_top']) / 2
+    processed_data['root'] = processed_data['hip'].copy()
+    processed_data['root'][1] = 0
+    processed_data['rotated_hip'] = processed_data['hip']
+    return processed_data
+
+
 if __name__ == '__main__':
-    get_data_from_json('json_files/video7.json')
+    get_video_data_from_json('json_files/video7.json')
