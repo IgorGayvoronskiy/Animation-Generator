@@ -1,7 +1,6 @@
 import math
 import sys
 import fbx
-import tools
 import metrabs_tools
 import numpy as np
 from tqdm import tqdm
@@ -9,75 +8,8 @@ from tqdm import tqdm
 from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
 
-path = input('Введите путь до файла с bind позой: ')
 
-is_done, frames_landmarks = metrabs_tools.get_image_data_from_json(path)
-if not is_done:
-    sys.exit('Некорректные данные')
-
-bone_structure = {
-    'hip': ['root', 'rotated_hip'],
-    'rotated_hip': ['hip', 'bell'],
-    'bell': ['rotated_hip', 'spin'],
-    'spin': ['bell', 'thor'],
-    'thor': ['spin', 'neck'],
-    'neck': ['thor', 'head_bot'],
-    'head_bot': ['neck', 'head_center'],
-    'head_center': ['head_bot', 'head_top'],
-    'head_top': ['head_center', None],
-
-    'left_hip': ['hip', 'left_knee'],
-    'left_knee': ['left_hip', 'left_ankle'],
-    'left_ankle': ['left_knee', 'left_foot_index'],
-    'left_foot_index': ["left_ankle", None],
-
-    'right_hip': ['hip', 'right_knee'],
-    'right_knee': ['right_hip', 'right_ankle'],
-    'right_ankle': ['right_knee', 'right_foot_index'],
-    'right_foot_index': ['right_ankle', None],
-
-    'left_collarbone': ['thor', 'left_shoulder'],
-    'left_shoulder': ['left_collarbone', 'left_elbow'],
-    'left_elbow': ['left_shoulder', 'left_wrist'],
-    'left_wrist': ['left_elbow', 'left_han'],
-    'left_han': ['left_wrist', None],
-
-    'right_collarbone': ['thor', 'right_shoulder'],
-    'right_shoulder': ['right_collarbone', 'right_elbow'],
-    'right_elbow': ['right_shoulder', 'right_wrist'],
-    'right_wrist': ['right_elbow', 'right_han'],
-    'right_han': ['right_wrist', None],
-
-    'nose': ['head_center', None],
-    'left_eye': ['head_center', None],
-    'right_eye': ['head_center', None],
-    'left_ear': ['head_center', None],
-    'right_ear': ['head_center', None]
-}
-
-head_leaf_nodes = ['nose', 'left_eye', 'right_eye', 'left_ear', 'right_ear']
-diff_rotated = ['rotated_hip', 'left_hip', 'right_hip', 'left_collarbone', 'right_collarbone']
-no_rotate_bone = ['rotated_hip', 'bell', 'spin', 'thor', 'neck', 'head_bot', 'head_center', 'head_top']
-
-rotate_spine = False
-
-# Создание FBX-сцены
-manager = fbx.FbxManager.Create()
-scene = fbx.FbxScene.Create(manager, 'MyScene')
-
-# Создаем кости
-skeleton_root = fbx.FbxSkeleton.Create(manager, 'root')
-skeleton_root.SetSkeletonType(fbx.FbxSkeleton.EType.eRoot)
-
-# Создаем узел скелета
-root_node = fbx.FbxNode.Create(manager, 'root')
-root_node.SetNodeAttribute(skeleton_root)
-root_node.LclTranslation.Set(fbx.FbxDouble3(*frames_landmarks['root']))
-scene.GetRootNode().AddChild(root_node)
-
-
-# Функция создания кости
-def create_bone(name, start, end, parent_node, flag=False):
+def create_bone(manager, name, start, end, parent_node, flag=False):
     bone = fbx.FbxSkeleton.Create(manager, name)
     bone.SetSkeletonType(fbx.FbxSkeleton.EType.eLimbNode)
     bone_node = fbx.FbxNode.Create(manager, name)
@@ -224,52 +156,136 @@ def calculate_rotation2(start, cur, end, standard_direction=False):
     return quat
 
 
-# Добавляем кости в сцену
-nodes = {'root': root_node}
-for current, (parent, daughter) in bone_structure.items():
-    flag = False
-    parent_node = nodes[parent]
-    current_point = frames_landmarks[current]
-    parent_point = frames_landmarks[parent]
-    if current == 'hip' or current in diff_rotated or current in head_leaf_nodes:
-        flag = True
-
-    nodes[current] = create_bone(current, parent_point, current_point,
-                                 parent_node, flag)
-
-for current, (parent, daughter) in bone_structure.items():
-    parent_node = nodes[parent]
-    current_node = nodes[current]
-    if daughter is None:
-        if current in head_leaf_nodes:
-            if current == 'left_eye' or current == 'right_eye' or current == 'nose':
-                rotation = calculate_rotation(frames_landmarks[parent], [0, 0, 0],
-                                              [0, 0, 1], True)
-            elif current == 'left_ear':
-                rotation = calculate_rotation(frames_landmarks[parent], [0, 0, 0],
-                                              [1, 0, 0], True)
-            elif current == 'right_ear':
-                rotation = calculate_rotation(frames_landmarks[parent], [0, 0, 0],
-                                              [-1, 0, 0], True)
-        else:
-            rotation = (0, 0, 0, 0)
+def create_bind_pose(file_path, from_json=True, progress_callback=None):
+    if from_json:
+        is_done, frames_landmarks = metrabs_tools.get_image_data_from_json(file_path)
+        if not is_done:
+            return None
     else:
-        if current == 'hip':
-            rotation = (0, 0, 0, 0)
-        elif current in diff_rotated:
-            rotation = calculate_rotation(frames_landmarks[parent], frames_landmarks[current],
-                                          frames_landmarks[daughter], True)
-        else:
-            rotation = calculate_rotation(frames_landmarks[parent], frames_landmarks[current],
-                                          frames_landmarks[daughter])
-        if not rotate_spine and current in no_rotate_bone:
-            rotation = (0, 0, 0, 0)
-    rotate_bone(parent_node, current_node, rotation)
+        is_done, frames_landmarks = metrabs_tools.get_data_from_image(file_path, progress_callback)
+        if not is_done:
+            return None
 
-# Сохраняем FBX
-exporter = fbx.FbxExporter.Create(manager, "")
-name_file = path.split('/')[1].split('.')[0]
-exporter.Initialize(f'{name_file}.fbx', -1, manager.GetIOSettings())
-exporter.Export(scene)
-exporter.Destroy()
-print(f'FBX файл создан: {name_file}.fbx')
+    bone_structure = {
+        'hip': ['root', 'rotated_hip'],
+        'rotated_hip': ['hip', 'bell'],
+        'bell': ['rotated_hip', 'spin'],
+        'spin': ['bell', 'thor'],
+        'thor': ['spin', 'neck'],
+        'neck': ['thor', 'head_bot'],
+        'head_bot': ['neck', 'head_center'],
+        'head_center': ['head_bot', 'head_top'],
+        'head_top': ['head_center', None],
+
+        'left_hip': ['hip', 'left_knee'],
+        'left_knee': ['left_hip', 'left_ankle'],
+        'left_ankle': ['left_knee', 'left_foot_index'],
+        'left_foot_index': ["left_ankle", None],
+
+        'right_hip': ['hip', 'right_knee'],
+        'right_knee': ['right_hip', 'right_ankle'],
+        'right_ankle': ['right_knee', 'right_foot_index'],
+        'right_foot_index': ['right_ankle', None],
+
+        'left_collarbone': ['thor', 'left_shoulder'],
+        'left_shoulder': ['left_collarbone', 'left_elbow'],
+        'left_elbow': ['left_shoulder', 'left_wrist'],
+        'left_wrist': ['left_elbow', 'left_han'],
+        'left_han': ['left_wrist', None],
+
+        'right_collarbone': ['thor', 'right_shoulder'],
+        'right_shoulder': ['right_collarbone', 'right_elbow'],
+        'right_elbow': ['right_shoulder', 'right_wrist'],
+        'right_wrist': ['right_elbow', 'right_han'],
+        'right_han': ['right_wrist', None],
+
+        'nose': ['head_center', None],
+        'left_eye': ['head_center', None],
+        'right_eye': ['head_center', None],
+        'left_ear': ['head_center', None],
+        'right_ear': ['head_center', None]
+    }
+
+    head_leaf_nodes = ['nose', 'left_eye', 'right_eye', 'left_ear', 'right_ear']
+    diff_rotated = ['rotated_hip', 'left_hip', 'right_hip', 'left_collarbone', 'right_collarbone']
+    no_rotate_bone = ['rotated_hip', 'bell', 'spin', 'thor', 'neck', 'head_bot', 'head_center', 'head_top']
+
+    rotate_spine = False
+
+    # Создание FBX-сцены
+    manager = fbx.FbxManager.Create()
+    scene = fbx.FbxScene.Create(manager, 'MyScene')
+
+    # Создаем кости
+    skeleton_root = fbx.FbxSkeleton.Create(manager, 'root')
+    skeleton_root.SetSkeletonType(fbx.FbxSkeleton.EType.eRoot)
+
+    # Создаем узел скелета
+    root_node = fbx.FbxNode.Create(manager, 'root')
+    root_node.SetNodeAttribute(skeleton_root)
+    root_node.LclTranslation.Set(fbx.FbxDouble3(*frames_landmarks['root']))
+    scene.GetRootNode().AddChild(root_node)
+
+    total = len(bone_structure)
+    # Добавляем кости в сцену
+    nodes = {'root': root_node}
+    for ind, (current, (parent, daughter)) in enumerate(bone_structure.items()):
+        flag = False
+        parent_node = nodes[parent]
+        current_point = frames_landmarks[current]
+        parent_point = frames_landmarks[parent]
+        if current == 'hip' or current in diff_rotated or current in head_leaf_nodes:
+            flag = True
+
+        nodes[current] = create_bone(manager, current, parent_point, current_point,
+                                     parent_node, flag)
+
+        if progress_callback:
+            progress_callback(ind, total, 'Добавление костей')
+
+    for ind, (current, (parent, daughter)) in enumerate(bone_structure.items()):
+        parent_node = nodes[parent]
+        current_node = nodes[current]
+        if daughter is None:
+            if current in head_leaf_nodes:
+                if current == 'left_eye' or current == 'right_eye' or current == 'nose':
+                    rotation = calculate_rotation(frames_landmarks[parent], [0, 0, 0],
+                                                  [0, 0, 1], True)
+                elif current == 'left_ear':
+                    rotation = calculate_rotation(frames_landmarks[parent], [0, 0, 0],
+                                                  [1, 0, 0], True)
+                elif current == 'right_ear':
+                    rotation = calculate_rotation(frames_landmarks[parent], [0, 0, 0],
+                                                  [-1, 0, 0], True)
+            else:
+                rotation = (0, 0, 0, 0)
+        else:
+            if current == 'hip':
+                rotation = (0, 0, 0, 0)
+            elif current in diff_rotated:
+                rotation = calculate_rotation(frames_landmarks[parent], frames_landmarks[current],
+                                              frames_landmarks[daughter], True)
+            else:
+                rotation = calculate_rotation(frames_landmarks[parent], frames_landmarks[current],
+                                              frames_landmarks[daughter])
+            if not rotate_spine and current in no_rotate_bone:
+                rotation = (0, 0, 0, 0)
+        rotate_bone(parent_node, current_node, rotation)
+
+        if progress_callback:
+            progress_callback(ind, total, 'Поворот костей')
+
+    # Сохраняем FBX
+    exporter = fbx.FbxExporter.Create(manager, "")
+    name_file = file_path.split('/')[-1].split('.')[0]
+    save_path = f'Source/Sceletons/{name_file}.fbx'
+    exporter.Initialize(save_path, -1, manager.GetIOSettings())
+    exporter.Export(scene)
+    exporter.Destroy()
+    print(f'FBX файл создан: {name_file}.fbx')
+
+    return save_path
+
+
+# if __name__ == '__main__':
+#     create_bind_pose('Source/json_files/spider_man_bind_pose3.json', True)

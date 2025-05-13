@@ -1,15 +1,15 @@
-# import sys
-# from tqdm import tqdm
-# import time
-# import urllib.request
-# import json
-#
-# import cameralib
-# import cv2
-import numpy as np
-# import tensorflow as tf
+import sys
+from tqdm import tqdm
+import time
+import urllib.request
 import json
 
+# import cameralib
+# !pip install git+https://github.com/isarandi/cameralib
+
+import cv2
+import numpy as np
+import json
 
 # def draw_skeleton(image, joints, edges, color=(0, 255, 0)):
 #     for i, j in edges:
@@ -35,72 +35,76 @@ import json
 #     return tf.data.Dataset.from_tensor_slices(frames).batch(8).prefetch(1), imshape
 #
 #
-# def get_data_from_video(video_filepath, demonstration=False):
-#     # model = tfhub.load('https://bit.ly/metrabs_s')
-#
-#     skeleton = 'smpl+head_30'
-#     joint_names = model.per_skeleton_joint_names[skeleton].numpy().astype(str)
-#     joint_edges = model.per_skeleton_joint_edges[skeleton].numpy()
-#
-#     frame_batches, imshape = load_frames_opencv(video_filepath)
-#
-#     camera = cameralib.Camera.from_fov(fov_degrees=55, imshape=imshape)
-#
-#     # Видео вывод
-#     if (demonstration):
-#         video_name = video_filepath.split('/')[-1]
-#         out_path = f'/marked_video/{video_name}'
-#         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-#         out_writer = cv2.VideoWriter(out_path, fourcc, 25, (imshape[1], imshape[0]))
-#
-#     # Данные 3D-точек
-#     all_people_poses = []
-#     max_people = 0
-#
-#     start = time.time()
-#     print('Start')
-#
-#     num_frames = 0
-#
-#     for frame_batch in tqdm(frame_batches):
-#         pred = model.detect_poses_batched(
-#             frame_batch,
-#             intrinsic_matrix=camera.intrinsic_matrix[tf.newaxis],
-#             skeleton=skeleton
-#         )
-#
-#         for frame, boxes, poses3d in zip(frame_batch, pred['boxes'], pred['poses3d']):
-#             frame_np = frame.numpy()
-#             poses3d_np = poses3d.numpy()
-#             num_people = poses3d_np.shape[0]
-#
-#             # Обновляем список, если увидели новых людей
-#             if num_people > max_people:
-#                 for _ in range(num_people - max_people):
-#                     all_people_poses.append([None] * num_frames)
-#                 max_people = num_people
-#
-#             # Добавляем позы
-#             for i in range(max_people):
-#                 if i < num_people:
-#                     person_pose = poses3d_np[i].tolist()
-#                 else:
-#                     person_pose = None  # или [[0, 0, 0]] * num_joints
-#                 all_people_poses[i].append(person_pose)
-#
-#             # Визуализация только первого
-#             if demonstration and num_people > 0:
-#                 projected = camera.world_to_image(poses3d_np)[0]
-#                 frame_bgr = cv2.cvtColor(frame_np, cv2.COLOR_RGB2BGR)
-#                 frame_skel = draw_skeleton(frame_bgr, projected, joint_edges)
-#                 out_writer.write(frame_skel)
-#             num_frames += 1
-#
-#     if demonstration:
-#         out_writer.release()
-#
-#     data = data_processing(all_people_poses)
-#     return data
+def get_data_from_video(video_filepath, demonstration=False):
+    print('Это заглушка')
+    # import tensorflow as tf
+    # import tensorflow_hub as tfhub
+    # # model = tfhub.load('https://bit.ly/metrabs_s')
+    #
+    # skeleton = 'smpl+head_30'
+    # joint_names = model.per_skeleton_joint_names[skeleton].numpy().astype(str)
+    # joint_edges = model.per_skeleton_joint_edges[skeleton].numpy()
+    #
+    # frame_batches, imshape = load_frames_opencv(video_filepath)
+    #
+    # camera = cameralib.Camera.from_fov(fov_degrees=55, imshape=imshape)
+    #
+    # # Видео вывод
+    # if (demonstration):
+    #     video_name = video_filepath.split('/')[-1]
+    #     out_path = f'/marked_video/{video_name}'
+    #     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    #     out_writer = cv2.VideoWriter(out_path, fourcc, 25, (imshape[1], imshape[0]))
+    #
+    # # Данные 3D-точек
+    # all_people_poses = []
+    # max_people = 0
+    #
+    # start = time.time()
+    # print('Start')
+    #
+    # num_frames = 0
+    #
+    # for frame_batch in tqdm(frame_batches):
+    #     pred = model.detect_poses_batched(
+    #         frame_batch,
+    #         intrinsic_matrix=camera.intrinsic_matrix[tf.newaxis],
+    #         skeleton=skeleton
+    #     )
+    #
+    #     for frame, boxes, poses3d in zip(frame_batch, pred['boxes'], pred['poses3d']):
+    #         frame_np = frame.numpy()
+    #         poses3d_np = poses3d.numpy()
+    #         num_people = poses3d_np.shape[0]
+    #
+    #         # Обновляем список, если увидели новых людей
+    #         if num_people > max_people:
+    #             for _ in range(num_people - max_people):
+    #                 all_people_poses.append([None] * num_frames)
+    #             max_people = num_people
+    #
+    #         # Добавляем позы
+    #         for i in range(max_people):
+    #             if i < num_people:
+    #                 person_pose = poses3d_np[i].tolist()
+    #             else:
+    #                 person_pose = None  # или [[0, 0, 0]] * num_joints
+    #             all_people_poses[i].append(person_pose)
+    #
+    #         # Визуализация только первого
+    #         if demonstration and num_people > 0:
+    #             projected = camera.world_to_image(poses3d_np)[0]
+    #             frame_bgr = cv2.cvtColor(frame_np, cv2.COLOR_RGB2BGR)
+    #             frame_skel = draw_skeleton(frame_bgr, projected, joint_edges)
+    #             out_writer.write(frame_skel)
+    #         num_frames += 1
+    #
+    # if demonstration:
+    #     out_writer.release()
+    #
+    # data = data_processing(all_people_poses)
+    # return data
+
 
 def get_video_data_from_json(json_filepath):
     with open(json_filepath) as f:
@@ -161,6 +165,45 @@ def data_processing(data):
     return processed_data
 
 
+def get_data_from_image(image_filepath, progress_callback=None):
+    import tensorflow as tf
+    import tensorflow_hub as tfhub
+
+    if progress_callback:
+        progress_callback(0, 10, 'Обработка изображения')
+    time.sleep(2)
+    skeleton_type = 'smpl+head_30'
+    model = tfhub.load('metrabs_models/metrabs_s')
+
+    img = tf.image.decode_image(tf.io.read_file(image_filepath))
+    if img.shape[-1] == 4:
+        img = img[:, :, :3]
+
+    predict = model.detect_poses(img, skeleton=skeleton_type)
+
+    # Данные 3D-точек
+    all_people_poses = []
+
+    start = time.time()
+    print('Start')
+
+    for boxes, poses3d in zip(predict['boxes'], predict['poses3d']):
+        poses3d_np = poses3d.numpy()
+        num_people = poses3d_np.shape[0]
+
+        # Добавляем позы
+        for i in range(num_people):
+            person_pose = poses3d_np[i].tolist()
+            all_people_poses.append(np.array(person_pose))
+
+    print(f"Процесс завершился за : {time.time() - start:.2f}s")
+
+    if len(all_people_poses):
+        return True, data_for_bind_pose_processing(np.array(all_people_poses))
+    else:
+        return False, []
+
+
 def get_image_data_from_json(json_filepath):
     with open(json_filepath) as f:
         data = json.load(f)  # (1, 580, 30, 3)
@@ -200,4 +243,4 @@ def data_for_bind_pose_processing(data, scale_k=10):
 
 
 if __name__ == '__main__':
-    get_video_data_from_json('json_files/video7.json')
+    get_video_data_from_json('Source/json_files/video7.json')

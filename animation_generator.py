@@ -1,79 +1,17 @@
+import shutil
 import math
 import fbx
-import tools
 import metrabs_tools
 import model_download
 import numpy as np
+import time as tm
 
 from tqdm import tqdm
 from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
 
-i = input('Выберите видео: ')
 
-frames_landmarks = metrabs_tools.get_video_data_from_json(f'json_files/video{i}.json')[0]
-
-bone_structure = {
-    'hip': ['root', 'rotated_hip'],
-    'rotated_hip': ['hip', 'bell'],
-    'bell': ['rotated_hip', 'spin'],
-    'spin': ['bell', 'thor'],
-    'thor': ['spin', 'neck'],
-    'neck': ['thor', 'head_bot'],
-    'head_bot': ['neck', 'head_center'],
-    'head_center': ['head_bot', 'head_top'],
-    'head_top': ['head_center', None],
-
-    'left_hip': ['hip', 'left_knee'],
-    'left_knee': ['left_hip', 'left_ankle'],
-    'left_ankle': ['left_knee', 'left_foot_index'],
-    'left_foot_index': ["left_ankle", None],
-
-    'right_hip': ['hip', 'right_knee'],
-    'right_knee': ['right_hip', 'right_ankle'],
-    'right_ankle': ['right_knee', 'right_foot_index'],
-    'right_foot_index': ['right_ankle', None],
-
-    'left_collarbone': ['thor', 'left_shoulder'],
-    'left_shoulder': ['left_collarbone', 'left_elbow'],
-    'left_elbow': ['left_shoulder', 'left_wrist'],
-    'left_wrist': ['left_elbow', 'left_han'],
-    'left_han': ['left_wrist', None],
-
-    'right_collarbone': ['thor', 'right_shoulder'],
-    'right_shoulder': ['right_collarbone', 'right_elbow'],
-    'right_elbow': ['right_shoulder', 'right_wrist'],
-    'right_wrist': ['right_elbow', 'right_han'],
-    'right_han': ['right_wrist', None],
-
-    'nose': ['head_center', None],
-    'left_eye': ['head_center', None],
-    'right_eye': ['head_center', None],
-    'left_ear': ['head_center', None],
-    'right_ear': ['head_center', None]
-}
-
-frame = 0
-head_leaf_nodes = ['nose', 'left_eye', 'right_eye', 'left_ear', 'right_ear']
-diff_rotated = ['rotated_hip', 'left_hip', 'right_hip', 'left_collarbone', 'right_collarbone']
-
-# Создание FBX-сцены
-manager = fbx.FbxManager.Create()
-scene = fbx.FbxScene.Create(manager, 'MyScene')
-
-# Создаем кости
-skeleton_root = fbx.FbxSkeleton.Create(manager, 'root')
-skeleton_root.SetSkeletonType(fbx.FbxSkeleton.EType.eRoot)
-
-# Создаем узел скелета
-root_node = fbx.FbxNode.Create(manager, 'root')
-root_node.SetNodeAttribute(skeleton_root)
-root_node.LclTranslation.Set(fbx.FbxDouble3(*frames_landmarks[frame]['root']))
-scene.GetRootNode().AddChild(root_node)
-
-
-# Функция создания кости
-def create_bone(name, start, end, parent_node, flag=False):
+def create_bone(manager, name, start, end, parent_node, flag=False):
     bone = fbx.FbxSkeleton.Create(manager, name)
     bone.SetSkeletonType(fbx.FbxSkeleton.EType.eLimbNode)
     bone_node = fbx.FbxNode.Create(manager, name)
@@ -227,7 +165,8 @@ def calculate_rotation3(name, start, cur, end, standard_direction=False, frame_h
     return final_rot.as_quat()
 
 
-def calculate_rotation(name, start, cur, end, standard_direction=False, frame_=0):
+def calculate_rotation(frames_landmarks, nodes, bone_structure, name,
+                       start, cur, end, standard_direction=False, frame_=0):
     direction = np.array(end, dtype=float) - np.array(cur, dtype=float)
     direction = direction / np.linalg.norm(direction)  # Нормализация
 
@@ -289,116 +228,13 @@ def calculate_rotation2(name, start, cur, end, standard_direction=False, frame_=
     return quat
 
 
-# Добавляем кости в сцену
-nodes = {'root': root_node}
-locations = []
-cur_locations = {'root': frames_landmarks[0]['root']}
-rotations = []
-cur_rotations = {}
-quats = {}
-
-for current, (parent, daughter) in bone_structure.items():
-    flag = False
-    parent_node = nodes[parent]
-    current_point = frames_landmarks[frame][current]
-    parent_point = frames_landmarks[frame][parent]
-    if current == 'hip' or current in diff_rotated or current in head_leaf_nodes:
-        cur_locations[current] = current_point - parent_point
-        flag = True
-
-    nodes[current] = create_bone(current, parent_point, current_point,
-                                 parent_node, flag)
-locations.append(cur_locations)
-
-for current, (parent, daughter) in bone_structure.items():
-    parent_node = nodes[parent]
-    current_node = nodes[current]
-    if daughter is None:
-        if current in head_leaf_nodes:
-            rotation = calculate_rotation(current, frames_landmarks[frame][parent], frames_landmarks[frame][parent],
-                                          frames_landmarks[frame][current], True)
-        else:
-            rotation = (0, 0, 0, 0)
-    else:
-        if current == 'hip':
-            # rotation = (0, 0, 0, 0)
-            rotation = calculate_rotation(current, frames_landmarks[frame][parent], [0, 0, 0], [0, 1, 0], True, frame)
-        elif current in diff_rotated:
-            rotation = calculate_rotation(current, frames_landmarks[frame][parent], frames_landmarks[frame][current],
-                                          frames_landmarks[frame][daughter], True)
-        else:
-            rotation = calculate_rotation(current, frames_landmarks[frame][parent], frames_landmarks[frame][current],
-                                          frames_landmarks[frame][daughter])
-    quats[current] = rotation
-    rotate_bone(current, parent_node, current_node, rotation, cur_rotations)
-rotations.append(cur_rotations)
-
-for frame in tqdm(range(1, len(frames_landmarks))):
-    if frame % 2 == 0:
-        add_frames = [0.33, 0.66, 1]
-    else:
-        add_frames = [0.5, 1]
-    for t in add_frames:
-        hint = None
-        cur_locations = {'root': frames_landmarks[frame]['root']}
-        cur_rotations = {}
-        for current, (parent, daughter) in bone_structure.items():
-            flag = False
-            current_node = nodes[current]
-            bone_location = frames_landmarks[frame][current] - frames_landmarks[frame][parent]
-            if current == 'hip' or current in diff_rotated or current in head_leaf_nodes:
-                cur_locations[current] = bone_location
-                flag = True
-            locate_bone(bone_location, current_node, flag)
-        locations.append(cur_locations)
-        for current, (parent, daughter) in bone_structure.items():
-            parent_node = nodes[parent]
-            current_node = nodes[current]
-            if daughter is None:
-                if current in head_leaf_nodes:
-                    rotation = calculate_rotation(current, frames_landmarks[frame][parent],
-                                                  frames_landmarks[frame][parent],
-                                                  frames_landmarks[frame][current], True)
-                else:
-                    rotation = (0, 0, 0, 0)
-            else:
-                if current == 'hip':
-                    # rotation = (0, 0, 0, 0)
-                    rotation = calculate_rotation(current, frames_landmarks[frame][parent],
-                                                  [0, 0, 0],
-                                                  [0, 1, 0], True, frame)
-                elif current in diff_rotated:
-                    rotation = calculate_rotation(current, frames_landmarks[frame][parent],
-                                                  frames_landmarks[frame][current],
-                                                  frames_landmarks[frame][daughter], True)
-                else:
-                    rotation = calculate_rotation(current, frames_landmarks[frame][parent],
-                                                  frames_landmarks[frame][current],
-                                                  frames_landmarks[frame][daughter])
-
-            if (daughter is not None or current in head_leaf_nodes):  # тут убрал current != 'hip' and
-                slerp_rotation = slerp_quaternion(quats[current], rotation, t)
-                quats[current] = rotation
-            else:
-                slerp_rotation = rotation
-
-            rotate_bone(current, parent_node, current_node, slerp_rotation, cur_rotations)
-        rotations.append(cur_rotations)
-
-
-# Сохраняем FBX
-# exporter = fbx.FbxExporter.Create(manager, "")
-# exporter.Initialize(f'output{i}.fbx', -1, manager.GetIOSettings())
-# exporter.Export(scene)
-# exporter.Destroy()
-# print(f'FBX файл создан: output{i}.fbx')
-
-
-def add_animation(scene, nodes, landmarks_frames, bone_struct, diff_rot, h_l_n, rotations_by_frame):
+def add_animation(scene, nodes, landmarks_frames, bone_struct, diff_rot, h_l_n, rotations_by_frame, progress_callback):
     anim_stack = fbx.FbxAnimStack.Create(scene, "Animation")
     anim_layer = fbx.FbxAnimLayer.Create(scene, "BaseLayer")
     anim_stack.AddMember(anim_layer)
     scene.SetCurrentAnimationStack(anim_stack)
+
+    total = len(landmarks_frames)
 
     for frame, landmarks in tqdm(enumerate(landmarks_frames)):
         time = fbx.FbxTime()
@@ -473,38 +309,241 @@ def add_animation(scene, nodes, landmarks_frames, bone_struct, diff_rot, h_l_n, 
             y_rot_curve.KeyModifyEnd()
             z_rot_curve.KeyModifyEnd()
 
+            if progress_callback:
+                progress_callback(frame, total, 'Добавление анимации')
+    if progress_callback:
+        progress_callback(total, total, 'Анимация создана')
+        tm.sleep(1)
 
-# from collections import defaultdict
-# import numpy as np
-#
-# # Структура: bone_name -> channel -> [angle_frame0, angle_frame1, ...]
-# euler_angles = defaultdict(lambda: defaultdict(list))
-#
-# for frame in range(len(rotations)):
-#     for bone_name in bone_structure:
-#         if bone_name in ['root', 'hip']:
-#             continue
-#         angles = rotations[frame][bone_name]  # (x, y, z)
-#         euler_angles[bone_name]['x'].append(angles[0])
-#         euler_angles[bone_name]['y'].append(angles[1])
-#         euler_angles[bone_name]['z'].append(angles[2])
-#
-# for bone_name in bone_structure:
-#     if bone_name in ['root', 'hip']:
-#         continue
-#
-#     for axis in ['x', 'y', 'z']:
-#         raw = np.radians(euler_angles[bone_name][axis])
-#         #unwrapped = np.unwrap(raw, discont=np.radians(180))
-#         euler_angles[bone_name][axis] = np.degrees(raw)
 
-scene2, nodes2 = model_download.get_skeleton_nodes('models/spider_man_model3.fbx')
+def create_animation(key_points_data_path, model_path, from_json=True, progress_callback=None):
+    if from_json:
+        frames_landmarks = metrabs_tools.get_video_data_from_json(key_points_data_path)[0]
+    else:
+        frames_landmarks = metrabs_tools.get_data_from_video(key_points_data_path)[0]
 
-add_animation(scene2, nodes2, locations, bone_structure, diff_rotated, head_leaf_nodes, rotations)
+    bone_structure = {
+        'hip': ['root', 'rotated_hip'],
+        'rotated_hip': ['hip', 'bell'],
+        'bell': ['rotated_hip', 'spin'],
+        'spin': ['bell', 'thor'],
+        'thor': ['spin', 'neck'],
+        'neck': ['thor', 'head_bot'],
+        'head_bot': ['neck', 'head_center'],
+        'head_center': ['head_bot', 'head_top'],
+        'head_top': ['head_center', None],
 
-# Экспорт анимированного FBX
-exporter = fbx.FbxExporter.Create(manager, "")
-exporter.Initialize(f"animated_model_output{i}.fbx", -1, manager.GetIOSettings())
-exporter.Export(scene2)
-exporter.Destroy()
-print(f"FBX анимация создана: animated_model_output{i}.fbx")
+        'left_hip': ['hip', 'left_knee'],
+        'left_knee': ['left_hip', 'left_ankle'],
+        'left_ankle': ['left_knee', 'left_foot_index'],
+        'left_foot_index': ["left_ankle", None],
+
+        'right_hip': ['hip', 'right_knee'],
+        'right_knee': ['right_hip', 'right_ankle'],
+        'right_ankle': ['right_knee', 'right_foot_index'],
+        'right_foot_index': ['right_ankle', None],
+
+        'left_collarbone': ['thor', 'left_shoulder'],
+        'left_shoulder': ['left_collarbone', 'left_elbow'],
+        'left_elbow': ['left_shoulder', 'left_wrist'],
+        'left_wrist': ['left_elbow', 'left_han'],
+        'left_han': ['left_wrist', None],
+
+        'right_collarbone': ['thor', 'right_shoulder'],
+        'right_shoulder': ['right_collarbone', 'right_elbow'],
+        'right_elbow': ['right_shoulder', 'right_wrist'],
+        'right_wrist': ['right_elbow', 'right_han'],
+        'right_han': ['right_wrist', None],
+
+        'nose': ['head_center', None],
+        'left_eye': ['head_center', None],
+        'right_eye': ['head_center', None],
+        'left_ear': ['head_center', None],
+        'right_ear': ['head_center', None]
+    }
+
+    frame = 0
+    head_leaf_nodes = ['nose', 'left_eye', 'right_eye', 'left_ear', 'right_ear']
+    diff_rotated = ['rotated_hip', 'left_hip', 'right_hip', 'left_collarbone', 'right_collarbone']
+
+    # Создание FBX-сцены
+    manager = fbx.FbxManager.Create()
+    scene = fbx.FbxScene.Create(manager, 'MyScene')
+
+    # Создаем кости
+    skeleton_root = fbx.FbxSkeleton.Create(manager, 'root')
+    skeleton_root.SetSkeletonType(fbx.FbxSkeleton.EType.eRoot)
+
+    # Создаем узел скелета
+    root_node = fbx.FbxNode.Create(manager, 'root')
+    root_node.SetNodeAttribute(skeleton_root)
+    root_node.LclTranslation.Set(fbx.FbxDouble3(*frames_landmarks[frame]['root']))
+    scene.GetRootNode().AddChild(root_node)
+
+    # Добавляем кости в сцену
+    nodes = {'root': root_node}
+    locations = []
+    cur_locations = {'root': frames_landmarks[0]['root']}
+    rotations = []
+    cur_rotations = {}
+    quats = {}
+
+    for current, (parent, daughter) in bone_structure.items():
+        flag = False
+        parent_node = nodes[parent]
+        current_point = frames_landmarks[frame][current]
+        parent_point = frames_landmarks[frame][parent]
+        if current == 'hip' or current in diff_rotated or current in head_leaf_nodes:
+            cur_locations[current] = current_point - parent_point
+            flag = True
+
+        nodes[current] = create_bone(manager, current, parent_point, current_point,
+                                     parent_node, flag)
+    locations.append(cur_locations)
+
+    for current, (parent, daughter) in bone_structure.items():
+        parent_node = nodes[parent]
+        current_node = nodes[current]
+        if daughter is None:
+            if current in head_leaf_nodes:
+                rotation = calculate_rotation(frames_landmarks, nodes, bone_structure, current,
+                                              frames_landmarks[frame][parent], frames_landmarks[frame][parent],
+                                              frames_landmarks[frame][current], True)
+            else:
+                rotation = (0, 0, 0, 0)
+        else:
+            if current == 'hip':
+                # rotation = (0, 0, 0, 0)
+                rotation = calculate_rotation(frames_landmarks, nodes, bone_structure, current,
+                                              frames_landmarks[frame][parent], [0, 0, 0],
+                                              [0, 1, 0], True)
+            elif current in diff_rotated:
+                rotation = calculate_rotation(frames_landmarks, nodes, bone_structure, current,
+                                              frames_landmarks[frame][parent], frames_landmarks[frame][current],
+                                              frames_landmarks[frame][daughter], True)
+            else:
+                rotation = calculate_rotation(frames_landmarks, nodes, bone_structure, current,
+                                              frames_landmarks[frame][parent], frames_landmarks[frame][current],
+                                              frames_landmarks[frame][daughter])
+        quats[current] = rotation
+        rotate_bone(current, parent_node, current_node, rotation, cur_rotations)
+    rotations.append(cur_rotations)
+
+    total = len(frames_landmarks)
+
+    for frame in tqdm(range(1, len(frames_landmarks))):
+        if frame % 2 == 0:
+            add_frames = [0.33, 0.66, 1]
+        else:
+            add_frames = [0.5, 1]
+        for t in add_frames:
+            hint = None
+            cur_locations = {'root': frames_landmarks[frame]['root']}
+            cur_rotations = {}
+            for current, (parent, daughter) in bone_structure.items():
+                flag = False
+                current_node = nodes[current]
+                bone_location = frames_landmarks[frame][current] - frames_landmarks[frame][parent]
+                if current == 'hip' or current in diff_rotated or current in head_leaf_nodes:
+                    cur_locations[current] = bone_location
+                    flag = True
+                locate_bone(bone_location, current_node, flag)
+            locations.append(cur_locations)
+            for current, (parent, daughter) in bone_structure.items():
+                parent_node = nodes[parent]
+                current_node = nodes[current]
+                if daughter is None:
+                    if current in head_leaf_nodes:
+                        rotation = calculate_rotation(frames_landmarks, nodes, bone_structure, current,
+                                                      frames_landmarks[frame][parent], frames_landmarks[frame][parent],
+                                                      frames_landmarks[frame][current], True, frame)
+                    else:
+                        rotation = (0, 0, 0, 0)
+                else:
+                    if current == 'hip':
+                        # rotation = (0, 0, 0, 0)
+                        rotation = calculate_rotation(frames_landmarks, nodes, bone_structure, current,
+                                                      frames_landmarks[frame][parent], [0, 0, 0],
+                                                      [0, 1, 0], True, frame)
+                    elif current in diff_rotated:
+                        rotation = calculate_rotation(frames_landmarks, nodes, bone_structure, current,
+                                                      frames_landmarks[frame][parent], frames_landmarks[frame][current],
+                                                      frames_landmarks[frame][daughter], True, frame)
+                    else:
+                        rotation = calculate_rotation(frames_landmarks, nodes, bone_structure, current,
+                                                      frames_landmarks[frame][parent], frames_landmarks[frame][current],
+                                                      frames_landmarks[frame][daughter], frame_=frame)
+
+                if (daughter is not None or current in head_leaf_nodes):  # тут убрал current != 'hip' and
+                    slerp_rotation = slerp_quaternion(quats[current], rotation, t)
+                    quats[current] = rotation
+                else:
+                    slerp_rotation = rotation
+
+                rotate_bone(current, parent_node, current_node, slerp_rotation, cur_rotations)
+            rotations.append(cur_rotations)
+
+            if progress_callback:
+                progress_callback(frame, total, 'Обработка данных')
+
+    # Сохраняем FBX
+    # exporter = fbx.FbxExporter.Create(manager, "")
+    # exporter.Initialize(f'output{i}.fbx', -1, manager.GetIOSettings())
+    # exporter.Export(scene)
+    # exporter.Destroy()
+    # print(f'FBX файл создан: output{i}.fbx')
+
+    # from collections import defaultdict
+    # import numpy as np
+    #
+    # # Структура: bone_name -> channel -> [angle_frame0, angle_frame1, ...]
+    # euler_angles = defaultdict(lambda: defaultdict(list))
+    #
+    # for frame in range(len(rotations)):
+    #     for bone_name in bone_structure:
+    #         if bone_name in ['root', 'hip']:
+    #             continue
+    #         angles = rotations[frame][bone_name]  # (x, y, z)
+    #         euler_angles[bone_name]['x'].append(angles[0])
+    #         euler_angles[bone_name]['y'].append(angles[1])
+    #         euler_angles[bone_name]['z'].append(angles[2])
+    #
+    # for bone_name in bone_structure:
+    #     if bone_name in ['root', 'hip']:
+    #         continue
+    #
+    #     for axis in ['x', 'y', 'z']:
+    #         raw = np.radians(euler_angles[bone_name][axis])
+    #         #unwrapped = np.unwrap(raw, discont=np.radians(180))
+    #         euler_angles[bone_name][axis] = np.degrees(raw)
+
+    scene2, nodes2 = model_download.get_skeleton_nodes(model_path)
+
+    add_animation(scene2, nodes2, locations, bone_structure, diff_rotated, head_leaf_nodes, rotations, progress_callback)
+
+    # Экспорт анимированного FBX
+    print(model_path)
+    model_name = model_path.split('/')[-1].split('.')[0]
+    video_name = key_points_data_path.split('/')[-1].split('.')[0]
+    exporter = fbx.FbxExporter.Create(manager, "")
+    exporter.Initialize(f"animated_models/animated_{model_name}_from_{video_name}.fbx", -1, manager.GetIOSettings())
+    exporter.Export(scene2)
+    exporter.Destroy()
+    print(f"FBX анимация создана: animated_{model_name}_from_{video_name}.fbx")
+
+    if not from_json:
+        source_path = key_points_data_path
+        destination_path = f"animated_models/animated_{model_name}_from_{video_name}.mp4"
+        shutil.copy2(source_path, destination_path)
+
+
+if __name__ == '__main__':
+    input_type = input('Введи v если видео или j, если json: ')
+    if input_type == 'v':
+        i = input('Введите номер тестового видео: ')
+        create_animation(f'Source/videos/video{i}.mp4',
+                         'Source/rigged_models/spider_man_model3.fbx', False)
+    elif input_type == 'j':
+        i = input('Введите номер тестового json: ')
+        create_animation(f'Source/json_files/video{i}.json',
+                         'Source/rigged_models/spider_man_model3.fbx', True)

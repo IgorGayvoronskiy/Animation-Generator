@@ -35,7 +35,7 @@ def get_skeleton_nodes(fbx_file_path):
 
 
 if __name__ == '__main__':
-    fbx_path = "models/spider_man_model3.fbx"
+    fbx_path = "Source/rigged_models/spider_man_model3.fbx"
     _, nodes = get_skeleton_nodes(fbx_path)
 
     print(len(nodes))
