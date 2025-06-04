@@ -1,13 +1,10 @@
 import os
 import sys
-import time
 
-import cv2
-
-import bind_pose_creator_tool
 import upload_model_window
-from useful_classes import TrapezoidWidget, JsonImageDropLabel, ProgressOverlay, GifButton
-from PyQt5.QtCore import Qt, QCoreApplication
+from multiprocessing import Process
+from useful_classes import TrapezoidWidget, JsonImageDropLabel, ProgressOverlay, GifButton, SkeletonWorker
+from PyQt5.QtCore import Qt, QCoreApplication, QThread
 from PyQt5.QtGui import QPixmap, QColor, QLinearGradient, QPalette, QBrush, QImage, QFont, QMovie
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QPushButton, QLabel, QVBoxLayout,
@@ -22,6 +19,8 @@ import results_window
 class ModelDownloadWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.worker = None
+        self.thread = None
         self.upload_window = None
         self.download_button = None
         self.rename_button = None
@@ -48,12 +47,12 @@ class ModelDownloadWindow(QMainWindow):
     def open_res_window(self):
         self.res_window = results_window.ResultsWindow()
         self.res_window.show()
-        self.close()
+        self.hide()
 
     def open_create_window(self):
         self.create_window = create_animation_window.CreateAnimationWindow()
         self.create_window.show()
-        self.close()
+        self.hide()
 
     def initUI(self):
         # Центральный виджет с градиентом
@@ -147,7 +146,7 @@ class ModelDownloadWindow(QMainWindow):
         nav_layout.setSpacing(20)
         nav_layout.setAlignment(Qt.AlignCenter)
 
-        archive_btn = QPushButton("🗂 Результаты")
+        archive_btn = QPushButton("🗂 Архив анимаций")
         create_btn = QPushButton("✨ Создать анимацию")
         upload_btn = QPushButton("➕ Загрузить модель")
 
@@ -443,38 +442,53 @@ class ModelDownloadWindow(QMainWindow):
 
     def create_sceleton(self):
         if self.json_path is not None or self.image_path is not None:
-            self.progress_overlay.show_overlay()
-            self.progress_overlay.update_message("Создание скелета...")
+            self.start_skeleton_thread()
 
-            source_path = bind_pose_creator_tool.create_bind_pose(
-                    file_path=self.json_path if self.accept_json_mode else self.image_path,
-                    from_json=self.accept_json_mode,
-                    progress_callback=self.progress_overlay.update_progress
+    def start_skeleton_thread(self):
+        file_path = self.json_path if self.accept_json_mode else self.image_path
+        from_json = self.accept_json_mode
+
+        self.thread = QThread()
+        self.worker = SkeletonWorker(file_path, from_json)
+        self.worker.moveToThread(self.thread)
+
+        # Связь сигналов
+        self.thread.started.connect(self.worker.run)
+        self.worker.progress.connect(self.progress_overlay.update_progress)
+        self.worker.finished.connect(self.on_skeleton_created)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+
+        self.progress_overlay.show_overlay("Создание скелета...")
+        self.thread.start()
+
+    def on_skeleton_created(self, fbx_path):
+        self.progress_overlay.hide_overlay()
+
+        if fbx_path:
+            name = fbx_path.split('/')[-1]
+            save_path, _ = QFileDialog.getSaveFileName(
+                self, "Сохранить как", name, "FBX файлы (*.fbx)"
             )
-            self.progress_overlay.hide_overlay()
-            print(source_path)
-            if source_path is not None:
-                print(source_path)
-                name = source_path.split('/')[-1]
-                save_path, _ = QFileDialog.getSaveFileName(
-                    self, "Сохранить как", name, "FBX файлы (*.fbx)"
-                )
-                if save_path:
-                    try:
-                        import shutil
-                        shutil.copy2(source_path, save_path)
-                    except Exception as e:
-                        QMessageBox.warning(self, "Ошибка", str(e))
-                os.remove(source_path)
-                if self.accept_json_mode:
-                    self.json_path = None
-                    self.rigging_label.setText("JSON не выбран")
-                else:
-                    self.image_path = None
-                    self.rig_label_reset()
+            if save_path:
+                try:
+                    import shutil
+                    shutil.copy2(fbx_path, save_path)
+                except Exception as e:
+                    QMessageBox.warning(self, "Ошибка при копировании", str(e))
+                finally:
+                    import os
+                    os.remove(fbx_path)
+
+            if self.accept_json_mode:
+                self.json_path = None
+                self.rigging_label.setText("JSON не выбран")
             else:
-                print('На основе этого изображения не удалось создать скелет, попробуйте подобрать другой кадр')
-                # QMessageBox.warning(self, "На основе этого изображения не удалось создать скелет, попробуйте подобрать другой кадр")
+                self.image_path = None
+                self.rig_label_reset()
+        else:
+            QMessageBox.warning(self, "Ошибка", "Не удалось создать скелет. Попробуйте другое изображение.")
 
     def delete_3Dmodel(self):
         index = self.model_list.currentRow()

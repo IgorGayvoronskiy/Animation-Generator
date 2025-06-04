@@ -9,7 +9,7 @@ from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
 
 
-def create_bone(manager, name, start, end, parent_node, flag=False):
+def create_bone(manager, name, start, end, parent_node, flag=False, diff=None):
     bone = fbx.FbxSkeleton.Create(manager, name)
     bone.SetSkeletonType(fbx.FbxSkeleton.EType.eLimbNode)
     bone_node = fbx.FbxNode.Create(manager, name)
@@ -23,35 +23,195 @@ def create_bone(manager, name, start, end, parent_node, flag=False):
         len_b = math.sqrt(translation[0] ** 2 + translation[1] ** 2 + translation[2] ** 2)
         bone_node.LclTranslation.Set(fbx.FbxDouble3(0, len_b, 0))
 
+    # if diff is not None and name == 'rotated_left_hip':
+    #     len_bone = math.sqrt(diff[0] ** 2 + diff[1] ** 2 + diff[2] ** 2)
+    #     cur_len = bone_node.LclScaling.Get()
+    #     bone_node.LclScaling.Set(fbx.FbxDouble3(cur_len[0], len_bone, cur_len[2]))
+    #     print(len_bone, cur_len[1])
+    #     print(parent_node.GetName())
+
     parent_node.AddChild(bone_node)
+
     return bone_node
 
 
-def rotate_bone(parent_bone_node, bone_node, quat):
+def rotate_bone(name, parent_bone_node, bone_node, swing, twist):
     global_transform = bone_node.EvaluateGlobalTransform()
 
-    quat_fbx = fbx.FbxQuaternion(quat[0], quat[1], quat[2], quat[3])
+    quat_fbx = fbx.FbxQuaternion(swing[0], swing[1], swing[2], swing[3])
     rotation_matrix = fbx.FbxAMatrix()
     rotation_matrix.SetQ(quat_fbx)
 
-    # 3. Умножаем глобальную матрицу на вращение (в глобальном пространстве!)
+    twist_fbx = fbx.FbxQuaternion(twist[0], twist[1], twist[2], twist[3])
+    twist_matr = fbx.FbxAMatrix()
+    twist_matr.SetQ(twist_fbx)
+
     new_global = rotation_matrix * global_transform
 
-    # 4. Получаем глобальную матрицу родителя
     if parent_bone_node:
         parent_global = parent_bone_node.EvaluateGlobalTransform()
         parent_global_inverse = parent_global.Inverse()
-        # 5. Получаем локальную матрицу, которую нужно задать в узел
         new_local = parent_global_inverse * new_global
     else:
-        new_local = new_global  # если это root
+        new_local = new_global
 
-    # 6. Применяем локальные transform'ы
+    if (name.startswith('rotated_') and name not in ['rotated_hip', 'rotated_left_han', 'rotated_right_han',
+                                                     'rotated_left_foot_index', 'rotated_right_foot_index']):
+        new_local = twist_matr
+    else:
+        new_local = new_local * twist_matr
+
     rotation_ = new_local.GetR()
 
     rotation_ = fbx.FbxDouble3(rotation_[0], rotation_[1], rotation_[2])
 
+    bone_node.SetRotationOrder(fbx.FbxNode.EPivotSet.eSourcePivot, fbx.EFbxRotationOrder.eEulerYXZ)
     bone_node.LclRotation.Set(rotation_)
+
+
+def project_on_plane(vec, normal):
+    normal = normal / np.linalg.norm(normal)
+    return vec - np.dot(vec, normal) * normal
+
+
+def quaternion_twist(curr_x, target_x, axis):
+    # Проекция на плоскость, перпендикулярную оси
+    proj_curr = project_on_plane(curr_x, axis)
+    proj_target = project_on_plane(target_x, axis)
+
+    # Нормализация проекций
+    if np.linalg.norm(proj_curr) > 1e-6:
+        proj_curr /= np.linalg.norm(proj_curr)
+    else:
+        proj_curr = np.array([0, 0, 1])
+    if np.linalg.norm(proj_target) > 1e-6:
+        proj_target /= np.linalg.norm(proj_target)
+    else:
+        proj_target = np.array([0, 0, 1])
+
+    # Угол между проекциями
+    dot = np.clip(np.dot(proj_curr, proj_target), -1.0, 1.0)
+    angle = np.arccos(dot)  # в радианах
+
+    # Определение знака угла
+    cross = np.cross(proj_curr, proj_target)
+    sign = np.sign(np.dot(cross, axis))
+    angle *= sign  # применяем знак
+
+    # Кватернион поворота вокруг оси
+    quat = R.from_rotvec(axis * angle)
+    return quat  # возвращает scipy Rotation object
+
+
+def fbx_matrix_to_numpy(fbx_matrix):
+    mat = np.zeros((4, 4))
+    for row in range(4):
+        for col in range(4):
+            mat[row, col] = fbx_matrix.Get(row, col)
+    return mat
+
+
+def transform_vector(matrix_fbx, vector_np):
+    mat_np = fbx_matrix_to_numpy(matrix_fbx)
+
+    vec4 = np.append(vector_np, 0.0)
+
+    transformed = mat_np @ vec4
+    return transformed[:3]  # вернём обратно в 3D
+
+
+def twist_rotate(name, parent_bone_node, frames_landmarks, direction):
+    direction = normalize(direction)
+
+    if name == 'hip':
+        up_hint = normalize(frames_landmarks['left_hip'] - frames_landmarks['hip'])
+        needed_v = normalize(up_hint)
+    elif name == 'rotated_left_hip':
+        up_hint = normalize(frames_landmarks['left_knee'] - frames_landmarks['left_ankle'])
+        if abs(np.dot(direction, up_hint)) >= 0.99:
+            up_hint = normalize(frames_landmarks['left_ankle'] - frames_landmarks['left_foot_index'])
+        needed_v = np.cross(direction, up_hint)
+        needed_v = normalize(needed_v)
+    elif name == 'rotated_right_hip':
+        up_hint = normalize(frames_landmarks['right_knee'] - frames_landmarks['right_ankle'])
+        if abs(np.dot(direction, up_hint)) >= 0.99:
+            up_hint = normalize(frames_landmarks['right_ankle'] - frames_landmarks['right_foot_index'])
+        needed_v = np.cross(direction, up_hint)
+        needed_v = normalize(needed_v)
+    elif name == 'rotated_left_knee':
+        up_hint = normalize(frames_landmarks['left_ankle'] - frames_landmarks['left_foot_index'])
+        if abs(np.dot(direction, up_hint)) >= 0.99:
+            up_hint = normalize(frames_landmarks['left_knee'] - frames_landmarks['left_hip'])
+        needed_v = np.cross(direction, up_hint)
+        needed_v = normalize(needed_v)
+    elif name == 'rotated_right_knee':
+        up_hint = normalize(frames_landmarks['right_ankle'] - frames_landmarks['right_foot_index'])
+        if abs(np.dot(direction, up_hint)) >= 0.99:
+            up_hint = normalize(frames_landmarks['right_knee'] - frames_landmarks['right_hip'])
+        needed_v = np.cross(direction, up_hint)
+        needed_v = normalize(needed_v)
+    elif name == 'rotated_left_ankle':
+        up_hint = normalize(frames_landmarks['left_knee'] - frames_landmarks['left_ankle'])
+        needed_v = np.cross(direction, up_hint)
+        needed_v = normalize(needed_v)
+    elif name == 'rotated_right_ankle':
+        up_hint = normalize(frames_landmarks['right_knee'] - frames_landmarks['right_ankle'])
+        needed_v = np.cross(direction, up_hint)
+        needed_v = normalize(needed_v)
+    elif name == 'rotated_left_collarbone':
+        up_hint = normalize(frames_landmarks['neck'] - frames_landmarks['thor'])
+        needed_v = np.cross(direction, up_hint)
+        needed_v = normalize(needed_v)
+    elif name == 'rotated_right_collarbone':
+        up_hint = normalize(frames_landmarks['neck'] - frames_landmarks['thor'])
+        needed_v = np.cross(direction, up_hint)
+        needed_v = normalize(needed_v)
+    elif name == 'rotated_left_shoulder':
+        up_hint = normalize(frames_landmarks['left_wrist'] - frames_landmarks['left_elbow'])
+        needed_v = np.cross(direction, up_hint)
+        if abs(np.dot(direction, up_hint)) >= 0.99:
+            needed_v = normalize(frames_landmarks[frame_]['left_thumb'] - frames_landmarks[frame_]['left_wrist'])
+        needed_v = normalize(needed_v)
+    elif name == 'rotated_right_shoulder':
+        up_hint = normalize(frames_landmarks['right_wrist'] - frames_landmarks['right_elbow'])
+        needed_v = np.cross(direction, up_hint)
+        if abs(np.dot(direction, up_hint)) >= 0.99:
+            needed_v = normalize(frames_landmarks[frame_]['right_wrist'] - frames_landmarks[frame_]['right_thumb'])
+        needed_v = normalize(needed_v)
+    elif name == 'rotated_left_elbow':
+        up_hint = normalize(frames_landmarks['left_thumb'] - frames_landmarks['left_wrist'])
+        needed_v = np.cross(direction, up_hint)
+        needed_v = normalize(needed_v)
+    elif name == 'rotated_right_elbow':
+        up_hint = normalize(frames_landmarks['right_thumb'] - frames_landmarks['right_wrist'])
+        needed_v = normalize(up_hint)
+    elif name == 'rotated_left_wrist':
+        up_hint = normalize(frames_landmarks['left_thumb'] - frames_landmarks['left_wrist'])
+        needed_v = normalize(up_hint)
+    elif name == 'rotated_right_wrist':
+        up_hint = normalize(frames_landmarks['right_thumb'] - frames_landmarks['right_wrist'])
+        needed_v = normalize(up_hint)
+
+    if name != 'hip':
+        parent_global = parent_bone_node.EvaluateGlobalTransform()
+        parent_global_inverse = parent_global.Inverse()
+
+        local_needed_v = normalize(transform_vector(parent_global_inverse, needed_v))
+        local_direction = np.array([0, 1, 0])
+
+        quat = quaternion_twist(np.array([1, 0, 0]), local_needed_v, local_direction).as_quat()
+
+        return quat
+    else:
+        parent_global = parent_bone_node.EvaluateGlobalTransform()
+        parent_global_inverse = parent_global.Inverse()
+
+        local_needed_v = normalize(transform_vector(parent_global_inverse, needed_v))
+        local_direction = np.array([0, 1, 0])
+
+        quat = quaternion_twist(np.array([1, 0, 0]), local_needed_v, local_direction).as_quat()
+
+        return quat
 
 
 def normalize(v):
@@ -114,7 +274,7 @@ def calculate_rotation3(name, start, cur, end, standard_direction=False):
     return final_rot.as_quat()
 
 
-def calculate_rotation(start, cur, end, standard_direction=False):
+def calculate_rotation2(start, cur, end, standard_direction=False):
     direction = np.array(end, dtype=float) - np.array(cur, dtype=float)
     direction = direction / np.linalg.norm(direction)  # Нормализация
 
@@ -139,7 +299,7 @@ def calculate_rotation(start, cur, end, standard_direction=False):
     return R.from_matrix(rot_matrix).as_quat()
 
 
-def calculate_rotation2(start, cur, end, standard_direction=False):
+def calculate_rotation(start, cur, end, standard_direction=False):
     direction = np.array(end, dtype=float) - np.array(cur, dtype=float)
     direction = direction / np.linalg.norm(direction)  # Нормализация
 
@@ -178,26 +338,44 @@ def create_bind_pose(file_path, from_json=True, progress_callback=None):
         'head_top': ['head_center', None],
 
         'left_hip': ['hip', 'left_knee'],
-        'left_knee': ['left_hip', 'left_ankle'],
-        'left_ankle': ['left_knee', 'left_foot_index'],
-        'left_foot_index': ["left_ankle", None],
+        'rotated_left_hip': ['left_hip', None],
+        'left_knee': ['rotated_left_hip', 'left_ankle'],
+        'rotated_left_knee': ['left_knee', None],
+        'left_ankle': ['rotated_left_knee', 'left_foot_index'],
+        'rotated_left_ankle': ['left_ankle', None],
+        'left_foot_index': ['rotated_left_ankle', None],
+        'rotated_left_foot_index': ['left_foot_index', None],
 
         'right_hip': ['hip', 'right_knee'],
-        'right_knee': ['right_hip', 'right_ankle'],
-        'right_ankle': ['right_knee', 'right_foot_index'],
-        'right_foot_index': ['right_ankle', None],
+        'rotated_right_hip': ['right_hip', None],
+        'right_knee': ['rotated_right_hip', 'right_ankle'],
+        'rotated_right_knee': ['right_knee', None],
+        'right_ankle': ['rotated_right_knee', 'right_foot_index'],
+        'rotated_right_ankle': ['right_ankle', None],
+        'right_foot_index': ['rotated_right_ankle', None],
+        'rotated_right_foot_index': ['right_foot_index', None],
 
         'left_collarbone': ['thor', 'left_shoulder'],
-        'left_shoulder': ['left_collarbone', 'left_elbow'],
-        'left_elbow': ['left_shoulder', 'left_wrist'],
-        'left_wrist': ['left_elbow', 'left_han'],
-        'left_han': ['left_wrist', None],
+        'rotated_left_collarbone': ['left_collarbone', None],
+        'left_shoulder': ['rotated_left_collarbone', 'left_elbow'],
+        'rotated_left_shoulder': ['left_shoulder', None],
+        'left_elbow': ['rotated_left_shoulder', 'left_wrist'],
+        'rotated_left_elbow': ['left_elbow', None],
+        'left_wrist': ['rotated_left_elbow', 'left_han'],
+        'rotated_left_wrist': ['left_wrist', None],
+        'left_han': ['rotated_left_wrist', None],
+        'rotated_left_han': ['left_han', None],
 
         'right_collarbone': ['thor', 'right_shoulder'],
-        'right_shoulder': ['right_collarbone', 'right_elbow'],
-        'right_elbow': ['right_shoulder', 'right_wrist'],
-        'right_wrist': ['right_elbow', 'right_han'],
-        'right_han': ['right_wrist', None],
+        'rotated_right_collarbone': ['right_collarbone', None],
+        'right_shoulder': ['rotated_right_collarbone', 'right_elbow'],
+        'rotated_right_shoulder': ['right_shoulder', None],
+        'right_elbow': ['rotated_right_shoulder', 'right_wrist'],
+        'rotated_right_elbow': ['right_elbow', None],
+        'right_wrist': ['rotated_right_elbow', 'right_han'],
+        'rotated_right_wrist': ['right_wrist', None],
+        'right_han': ['rotated_right_wrist', None],
+        'rotated_right_han': ['right_han', None],
 
         'nose': ['head_center', None],
         'left_eye': ['head_center', None],
@@ -208,7 +386,7 @@ def create_bind_pose(file_path, from_json=True, progress_callback=None):
 
     head_leaf_nodes = ['nose', 'left_eye', 'right_eye', 'left_ear', 'right_ear']
     diff_rotated = ['rotated_hip', 'left_hip', 'right_hip', 'left_collarbone', 'right_collarbone']
-    no_rotate_bone = ['rotated_hip', 'bell', 'spin', 'thor', 'neck', 'head_bot', 'head_center', 'head_top']
+    no_rotate_bone = ['hip', 'rotated_hip', 'bell', 'spin', 'thor', 'neck', 'head_bot', 'head_center', 'head_top']
 
     rotate_spine = False
 
@@ -232,8 +410,12 @@ def create_bind_pose(file_path, from_json=True, progress_callback=None):
     for ind, (current, (parent, daughter)) in enumerate(bone_structure.items()):
         flag = False
         parent_node = nodes[parent]
-        current_point = frames_landmarks[current]
+        if current == 'left_knee2':
+            current_point = frames_landmarks['left_knee']
+        else:
+            current_point = frames_landmarks[current]
         parent_point = frames_landmarks[parent]
+
         if current == 'hip' or current in diff_rotated or current in head_leaf_nodes:
             flag = True
 
@@ -246,6 +428,7 @@ def create_bind_pose(file_path, from_json=True, progress_callback=None):
     for ind, (current, (parent, daughter)) in enumerate(bone_structure.items()):
         parent_node = nodes[parent]
         current_node = nodes[current]
+        rotation = np.array([0, 0, 0, 1], dtype=float)
         if daughter is None:
             if current in head_leaf_nodes:
                 if current == 'left_eye' or current == 'right_eye' or current == 'nose':
@@ -258,10 +441,10 @@ def create_bind_pose(file_path, from_json=True, progress_callback=None):
                     rotation = calculate_rotation(frames_landmarks[parent], [0, 0, 0],
                                                   [-1, 0, 0], True)
             else:
-                rotation = (0, 0, 0, 0)
+                rotation = np.array([0, 0, 0, 1], dtype=float)
         else:
-            if current == 'hip':
-                rotation = (0, 0, 0, 0)
+            if current == 'hip' or current == 'rotated_left_hip':
+                rotation = np.array([0, 0, 0, 1], dtype=float)
             elif current in diff_rotated:
                 rotation = calculate_rotation(frames_landmarks[parent], frames_landmarks[current],
                                               frames_landmarks[daughter], True)
@@ -269,8 +452,21 @@ def create_bind_pose(file_path, from_json=True, progress_callback=None):
                 rotation = calculate_rotation(frames_landmarks[parent], frames_landmarks[current],
                                               frames_landmarks[daughter])
             if not rotate_spine and current in no_rotate_bone:
-                rotation = (0, 0, 0, 0)
-        rotate_bone(parent_node, current_node, rotation)
+                rotation = np.array([0, 0, 0, 1], dtype=float)
+
+        twist = np.array([0, 0, 0, 1], dtype=float)
+        if ((current.startswith('rotated_') and current not in ['rotated_hip', 'rotated_left_han',
+                                                                'rotated_right_han', 'rotated_left_foot_index',
+                                                                'rotated_right_foot_index'])
+                and current != 'hip'):
+            if current == 'hip':
+                direction = frames_landmarks[current] - (frames_landmarks['left_hip'] +
+                                                         frames_landmarks['right_hip']) / 2
+            else:
+                direction = frames_landmarks[bone_structure[parent][1]] - frames_landmarks[parent]
+            twist = twist_rotate(current, parent_node, frames_landmarks, direction)
+
+        rotate_bone(current, parent_node, current_node, rotation, twist)
 
         if progress_callback:
             progress_callback(ind, total, 'Поворот костей')
@@ -278,7 +474,7 @@ def create_bind_pose(file_path, from_json=True, progress_callback=None):
     # Сохраняем FBX
     exporter = fbx.FbxExporter.Create(manager, "")
     name_file = file_path.split('/')[-1].split('.')[0]
-    save_path = f'Source/Sceletons/{name_file}.fbx'
+    save_path = f'Source/Sceletons/{name_file}_test.fbx'
     exporter.Initialize(save_path, -1, manager.GetIOSettings())
     exporter.Export(scene)
     exporter.Destroy()
@@ -287,5 +483,5 @@ def create_bind_pose(file_path, from_json=True, progress_callback=None):
     return save_path
 
 
-# if __name__ == '__main__':
-#     create_bind_pose('Source/json_files/spider_man_bind_pose3.json', True)
+if __name__ == '__main__':
+    create_bind_pose("C:/Users/djdjd/Downloads/spider_man_bind_pose.png", False)

@@ -490,3 +490,54 @@ class ProgressOverlay(QWidget):
 
     def update_message(self, message):
         self.label.setText(message)
+
+
+from PyQt5.QtCore import QObject, pyqtSignal
+
+
+class SkeletonWorker(QObject):
+    progress = pyqtSignal(int, int, str)  # value, total, message
+    finished = pyqtSignal(str)  # путь к FBX или пустая строка
+
+    def __init__(self, file_path, from_json):
+        super().__init__()
+        self.file_path = file_path
+        self.from_json = from_json
+
+    def run(self):
+        from bind_pose_creator_tool import create_bind_pose
+        try:
+            path = create_bind_pose(
+                file_path=self.file_path,
+                from_json=self.from_json,
+                progress_callback=self.progress.emit
+            )
+            self.finished.emit(path or "")
+        except Exception as e:
+            print(f"Ошибка: {e}")
+            self.finished.emit("")
+
+
+class AnimationWorker(QObject):
+    progress = pyqtSignal(int, int, str)  # value, total, message
+    finished = pyqtSignal()  # путь к FBX или пустая строка
+
+    def __init__(self, file_path, model_path, from_json):
+        super().__init__()
+        self.file_path = file_path
+        self.model_path = model_path
+        self.from_json = from_json
+
+    def run(self):
+        from animation_generator import create_animation
+        try:
+            create_animation(
+                key_points_data_path=self.file_path,
+                model_path=self.model_path,
+                from_json=self.from_json,
+                progress_callback=self.progress.emit
+            )
+            self.finished.emit()
+        except Exception as e:
+            print(f"Ошибка: {e}")
+            self.finished.emit()

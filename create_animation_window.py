@@ -3,8 +3,8 @@ import sys
 import time
 
 import cv2
-from useful_classes import TrapezoidWidget, VideoDropLabel, ProgressOverlay, VideoPlayerPopup
-from PyQt5.QtCore import Qt, QCoreApplication
+from useful_classes import TrapezoidWidget, VideoDropLabel, ProgressOverlay, VideoPlayerPopup, AnimationWorker
+from PyQt5.QtCore import Qt, QCoreApplication, QThread
 from PyQt5.QtGui import QPixmap, QColor, QLinearGradient, QPalette, QBrush, QImage
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QPushButton, QLabel, QVBoxLayout,
@@ -20,6 +20,8 @@ import results_window
 class CreateAnimationWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.worker = None
+        self.thread = None
         self.model_window = None
         self.res_window = None
 
@@ -44,15 +46,14 @@ class CreateAnimationWindow(QMainWindow):
     def open_res_window(self):
         self.res_window = results_window.ResultsWindow()
         self.res_window.show()
-        self.close()
+        self.hide()
 
     def open_model_window(self):
         self.model_window = model_download_window.ModelDownloadWindow()
         self.model_window.show()
-        self.close()
+        self.hide()
 
     def initUI(self):
-        # Центральный виджет с градиентом
         central_widget = QWidget()
         gradient = QLinearGradient(0, 0, 0, 1)
         gradient.setCoordinateMode(QLinearGradient.ObjectBoundingMode)
@@ -67,7 +68,6 @@ class CreateAnimationWindow(QMainWindow):
 
         self.setCentralWidget(central_widget)
 
-        # Основной вертикальный layout
         root_layout = QVBoxLayout()
         root_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -81,7 +81,6 @@ class CreateAnimationWindow(QMainWindow):
 
         central_widget.setLayout(root_layout)
 
-        # Стили
         self.setStyleSheet("""
             QLabel {
                 color: #C4B5E0;
@@ -192,13 +191,12 @@ class CreateAnimationWindow(QMainWindow):
         nav_layout.setSpacing(20)
         nav_layout.setAlignment(Qt.AlignCenter)
 
-        archive_btn = QPushButton("🗂 Результаты")
+        archive_btn = QPushButton("🗂 Архив анимаций")
         create_btn = QPushButton("✨ Создать анимацию")
         upload_btn = QPushButton("➕ Загрузить модель")
 
         cur_window_btn = create_btn
 
-        # Сделать кнопки одинаковой ширины
         for btn in [archive_btn, create_btn, upload_btn]:
             btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
             btn.setMinimumHeight(10)
@@ -242,7 +240,6 @@ class CreateAnimationWindow(QMainWindow):
 
         nav_widget.setLayout(nav_layout)
 
-        # Эффект тени
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(20)
         shadow.setOffset(0, 4)
@@ -456,18 +453,32 @@ class CreateAnimationWindow(QMainWindow):
         QCoreApplication.processEvents()
 
     def generate_animation(self):
-        if self.json_path is not None or self.video_path is not None:
-            self.progress_overlay.show_overlay()
-            self.progress_overlay.update_message("Создание анимации...")
+        if (self.json_path is not None or self.video_path is not None) and self.model_path is not None:
+            self.start_skeleton_thread()
 
-            animation_generator.create_animation(
-                key_points_data_path=self.json_path if self.accept_json_mode else self.video_path,
-                model_path=self.model_path,
-                from_json=self.accept_json_mode,
-                progress_callback=self.progress_overlay.update_progress
-            )
+    def start_skeleton_thread(self):
+        file_path = self.json_path if self.accept_json_mode else self.image_path
+        model_path = self.model_path
+        from_json = self.accept_json_mode
 
-            self.progress_overlay.hide_overlay()
+        self.thread = QThread()
+        self.worker = AnimationWorker(file_path, model_path, from_json)
+        self.worker.moveToThread(self.thread)
+
+        # Связь сигналов
+        self.thread.started.connect(self.worker.run)
+        self.worker.progress.connect(self.progress_overlay.update_progress)
+        self.worker.finished.connect(self.on_animation_created)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+
+        self.progress_overlay.show_overlay("Создание анимации...")
+        self.thread.start()
+
+    def on_animation_created(self):
+        self.progress_overlay.hide_overlay()
+
 
 
 if __name__ == "__main__":

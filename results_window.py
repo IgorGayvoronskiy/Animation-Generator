@@ -37,12 +37,12 @@ class ResultsWindow(QMainWindow):
     def open_model_window(self):
         self.model_window = model_download_window.ModelDownloadWindow()
         self.model_window.show()
-        self.close()
+        self.hide()
 
     def open_create_window(self):
         self.create_window = create_animation_window.CreateAnimationWindow()
         self.create_window.show()
-        self.close()
+        self.hide()
 
     def initUI(self):
         # Центральный виджет с градиентом
@@ -140,7 +140,7 @@ class ResultsWindow(QMainWindow):
         nav_layout.setSpacing(20)
         nav_layout.setAlignment(Qt.AlignCenter)
 
-        archive_btn = QPushButton("🗂 Результаты")
+        archive_btn = QPushButton("🗂 Архив анимаций")
         create_btn = QPushButton("✨ Создать анимацию")
         upload_btn = QPushButton("➕ Загрузить модель")
 
