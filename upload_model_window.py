@@ -2,7 +2,7 @@ import os
 import shutil
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QLinearGradient, QColor, QPalette, QBrush, QPixmap
+from PyQt5.QtGui import QLinearGradient, QColor, QPalette, QBrush, QPixmap, QIcon
 from PyQt5.QtWidgets import (
     QPushButton, QWidget, QVBoxLayout,
     QLabel, QFileDialog, QLineEdit, QMessageBox, QApplication, QSpacerItem, QSizePolicy, QHBoxLayout,
@@ -23,6 +23,7 @@ class UploadWindow(QMainWindow):
         self.model_label = None
         self.choose_image_btn = None
         self.image_label = None
+        self.setWindowIcon(QIcon("Source/Images/AM2.ico"))
         self.setWindowTitle("Загрузка модели и изображения")
         self.initUI()
 

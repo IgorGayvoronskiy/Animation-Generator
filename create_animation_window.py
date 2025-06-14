@@ -9,7 +9,7 @@ from PyQt5.QtGui import QPixmap, QColor, QLinearGradient, QPalette, QBrush, QIma
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QPushButton, QLabel, QVBoxLayout,
     QHBoxLayout, QSpacerItem, QSizePolicy, QFileDialog,
-    QMainWindow, QGraphicsDropShadowEffect, QComboBox, QProgressBar
+    QMainWindow, QGraphicsDropShadowEffect, QComboBox, QProgressBar, QMessageBox, QInputDialog
 )
 
 import animation_generator
@@ -18,8 +18,14 @@ import results_window
 
 
 class CreateAnimationWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, main_window):
         super().__init__()
+
+        self.main_window = main_window
+        self.metr_model_path = None
+        self.select_frame = None
+        self.metr_model_combobox = None
+        self.frame_combobox = None
         self.worker = None
         self.thread = None
         self.model_window = None
@@ -38,20 +44,17 @@ class CreateAnimationWindow(QMainWindow):
         self.model_combobox = None
         self.model_path = None
         self.accept_json_mode = False
+
         self.setWindowTitle("Генератор анимаций")
         self.initUI()
         self.progress_overlay = ProgressOverlay(self)
-        self.showMaximized()
 
     def open_res_window(self):
-        self.res_window = results_window.ResultsWindow()
-        self.res_window.show()
-        self.hide()
+        self.main_window.get_res_win().load_animations()
+        self.main_window.slide_to(1)
 
     def open_model_window(self):
-        self.model_window = model_download_window.ModelDownloadWindow()
-        self.model_window.show()
-        self.hide()
+        self.main_window.slide_to(2)
 
     def initUI(self):
         central_widget = QWidget()
@@ -81,7 +84,7 @@ class CreateAnimationWindow(QMainWindow):
 
         central_widget.setLayout(root_layout)
 
-        self.setStyleSheet("""
+        self.setStyleSheet(""" 
             QLabel {
                 color: #C4B5E0;
                 font-size: 14px;
@@ -130,15 +133,15 @@ class CreateAnimationWindow(QMainWindow):
             QWidget#navBar QPushButton:pressed {
                 background-color: #D1B42A;
             }
-            
+
             QComboBox {
-                background-color: #2c2c2c;      /* фон выбранного элемента */
-                color: #ffffff;                 /* цвет текста выбранного элемента */
+                background-color: #2c2c2c;
+                color: #ffffff;
                 border: 1px solid #555;
                 border-radius: 10px;
                 padding: 8px 12px;
             }
-            
+
             QComboBox:hover {
                 background-color: #6344BC;
             }
@@ -147,13 +150,13 @@ class CreateAnimationWindow(QMainWindow):
                 width: 30px;
                 border-left: 1px solid #444;
             }
-            
+
             QComboBox::down-arrow {
                 image: url(Source/Images/icons8-стрелка-вниз-64_2.png);
                 width: 20px;
                 height: 20px;
             }
-        
+
             QComboBox QAbstractItemView {
                 background-color: #2c2c2c;
                 color: #ffffff;
@@ -162,7 +165,7 @@ class CreateAnimationWindow(QMainWindow):
                 border: 1px solid #222;
                 padding: 4px;
             }
-            
+
             QProgressBar {
                 border: 2px solid #555;
                 border-radius: 10px;
@@ -174,6 +177,24 @@ class CreateAnimationWindow(QMainWindow):
             QProgressBar::chunk {
                 background-color: #D1B42A;
                 width: 20px;
+            }
+
+            QInputDialog {
+                background-color: #C4B5E0;
+            }
+
+            QInputDialog QLabel {
+                color: black;
+                font-size: 14px;
+            }
+
+            QMessageBox {
+                background-color: #C4B5E0;
+            }
+
+            QMessageBox QLabel {
+                color: black;
+                font-size: 14px;
             }
         """)
 
@@ -313,10 +334,33 @@ class CreateAnimationWindow(QMainWindow):
         model_frame.addWidget(self.model_label)
         model_frame.addWidget(self.model_combobox)
 
+        generate_frame = QVBoxLayout()
+
         # Кнопка запуска процесса создания анимации
+        btn_wrapper_layout = QHBoxLayout()
+
+        btn_wrapper_layout.addStretch(1)
         generate_btn = QPushButton("Создать анимацию")
         generate_btn.setFixedSize(200, 60)
         generate_btn.clicked.connect(self.generate_animation)
+        btn_wrapper_layout.addWidget(generate_btn)
+        btn_wrapper_layout.addStretch(1)
+
+        combo_box_frame = QHBoxLayout()
+
+        self.frame_combobox = QComboBox()
+        self.frame_combobox.currentIndexChanged.connect(self.update_frame_preview)
+        self.load_frames()
+
+        self.metr_model_combobox = QComboBox()
+        self.metr_model_combobox.currentIndexChanged.connect(self.update_metr_model_preview)
+        self.load_metr_models()
+
+        combo_box_frame.addWidget(self.frame_combobox)
+        combo_box_frame.addWidget(self.metr_model_combobox)
+
+        generate_frame.addLayout(btn_wrapper_layout)
+        generate_frame.addLayout(combo_box_frame)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
@@ -326,7 +370,7 @@ class CreateAnimationWindow(QMainWindow):
         layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
         layout.addLayout(video_frame)
         layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
-        layout.addWidget(generate_btn)
+        layout.addLayout(generate_frame)
         layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
         layout.addLayout(model_frame)
         layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
@@ -358,7 +402,6 @@ class CreateAnimationWindow(QMainWindow):
         if self.accept_json_mode:
             if file_path.endswith(".json"):
                 self.video_label.setText(f"JSON файл загружен:\n{os.path.basename(file_path)}")
-                # Можно здесь добавить парсинг и отображение чего-то из JSON
             else:
                 self.video_label.setText("Неверный формат файла (только .json)")
         else:
@@ -413,7 +456,6 @@ class CreateAnimationWindow(QMainWindow):
         if self.video_player_window is not None:
             self.video_player_window.close()
 
-        # Открываем новое окно с плеером
         self.video_player_window = VideoPlayerPopup(self.video_path, parent=self)
         self.video_player_window.show()
 
@@ -422,7 +464,7 @@ class CreateAnimationWindow(QMainWindow):
         if not os.path.exists(models_dir):
             return
 
-        model_files = [f for f in os.listdir(models_dir) if f.lower().endswith(('.glb', '.obj', '.fbx'))] # возможно нужно будет оставить только fbx
+        model_files = [f for f in os.listdir(models_dir) if f.lower().endswith('.fbx')]
         self.model_combobox.clear()
         self.model_combobox.addItems(model_files)
 
@@ -447,25 +489,56 @@ class CreateAnimationWindow(QMainWindow):
         else:
             self.model_label.setText(f"Модель: {model_name}\n(Нет изображения)")
 
+    def load_frames(self):
+        frames = ['24 fps', '30 fps', '48 fps', '60 fps', '120 fps']
+        self.frame_combobox.clear()
+        self.frame_combobox.addItems(frames)
+
+        self.update_frame_preview(0)
+
+    def update_frame_preview(self, index):
+        self.select_frame = self.frame_combobox.itemText(index).strip(' fps')
+
+    def load_metr_models(self):
+        models_dir = "metrabs_models"
+        if not os.path.exists(models_dir):
+            return
+
+        model_files = [f for f in os.listdir(models_dir)]
+        self.metr_model_combobox.clear()
+        self.metr_model_combobox.addItems(model_files)
+
+        if model_files:
+            self.update_metr_model_preview(0)
+
+    def update_metr_model_preview(self, index):
+        model_name = self.metr_model_combobox.itemText(index)
+        if not model_name:
+            return
+
+        self.metr_model_path = f"metrabs_models/{model_name}"
+
     def update_progress(self, value, total):
         self.progress_bar.setMaximum(total)
         self.progress_bar.setValue(value)
         QCoreApplication.processEvents()
 
     def generate_animation(self):
-        if (self.json_path is not None or self.video_path is not None) and self.model_path is not None:
+        if ((self.json_path is not None or (self.video_path is not None and self.metr_model_path is not None)) and
+                self.model_path is not None):
             self.start_skeleton_thread()
 
     def start_skeleton_thread(self):
-        file_path = self.json_path if self.accept_json_mode else self.image_path
+        file_path = self.json_path if self.accept_json_mode else self.video_path
         model_path = self.model_path
+        frame_rate = self.select_frame
         from_json = self.accept_json_mode
+        metr_model_path = self.metr_model_path
 
         self.thread = QThread()
-        self.worker = AnimationWorker(file_path, model_path, from_json)
+        self.worker = AnimationWorker(file_path, model_path, from_json, frame_rate, metr_model_path)
         self.worker.moveToThread(self.thread)
 
-        # Связь сигналов
         self.thread.started.connect(self.worker.run)
         self.worker.progress.connect(self.progress_overlay.update_progress)
         self.worker.finished.connect(self.on_animation_created)
@@ -476,9 +549,28 @@ class CreateAnimationWindow(QMainWindow):
         self.progress_overlay.show_overlay("Создание анимации...")
         self.thread.start()
 
-    def on_animation_created(self):
+    def on_animation_created(self, fbx_path):
         self.progress_overlay.hide_overlay()
 
+        if fbx_path:
+            name = fbx_path.split('/')[-1]
+            new_name, ok = QInputDialog.getText(self, "Название файла", "Задайте имя файла (с расширением .fbx):",
+                                                text=name)
+            if ok and new_name:
+                new_path = f"animated_models/{new_name}"
+                new_video_path = new_path.strip('.fbx') + '.mp4'
+                if os.path.exists(new_path):
+                    QMessageBox.warning(self, "Ошибка", "Файл с таким именем уже существует.")
+                    return
+                try:
+                    os.rename(fbx_path, new_path)
+                    if self.video_path is not None and os.path.exists(self.video_path):
+                        os.rename(self.video_path, new_video_path)
+                    self.video_path = new_video_path
+                except Exception as e:
+                    QMessageBox.warning(self, "Ошибка", str(e))
+        else:
+            QMessageBox.warning(self, "Ошибка", "Не удалось создать анимацию. Попробуйте другой файл.")
 
 
 if __name__ == "__main__":

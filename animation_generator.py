@@ -71,8 +71,6 @@ def rotate_bone(name, parent_bone_node, bone_node, swing, twist, angles):
     else:
         new_local = new_local * twist_matr
 
-    # new_local = add_twist(name, new_local)
-
     rotation_ = new_local.GetR()
 
     rotation_ = fbx.FbxDouble3(rotation_[0], rotation_[1], rotation_[2])
@@ -131,10 +129,10 @@ def transform_vector(matrix_fbx, vector_np):
     vec4 = np.append(vector_np, 0.0)
 
     transformed = mat_np @ vec4
-    return transformed[:3]  # вернём обратно в 3D
+    return transformed[:3]
 
 
-def twist_rotate(name, parent_bone_node, bone_node, frames_landmarks, direction, angles, frame_=0):
+def twist_rotate(name, parent_bone_node, frames_landmarks, direction, frame_=0):
     direction = normalize(direction)
 
     if name == 'hip':
@@ -143,23 +141,23 @@ def twist_rotate(name, parent_bone_node, bone_node, frames_landmarks, direction,
     elif name == 'rotated_left_hip':
         up_hint = normalize(frames_landmarks[frame_]['left_knee'] - frames_landmarks[frame_]['left_ankle'])
         if abs(np.dot(direction, up_hint)) >= 0.99:
-            up_hint = normalize(frames_landmarks[frame_]['left_ankle'] - frames_landmarks[frame_]['left_foot_index'])
+            up_hint = normalize(frames_landmarks[frame_]['left_foot_index'] - frames_landmarks[frame_]['left_ankle'])
         needed_v = np.cross(direction, up_hint)
         needed_v = normalize(needed_v)
     elif name == 'rotated_right_hip':
         up_hint = normalize(frames_landmarks[frame_]['right_knee'] - frames_landmarks[frame_]['right_ankle'])
         if abs(np.dot(direction, up_hint)) >= 0.99:
-            up_hint = normalize(frames_landmarks[frame_]['right_ankle'] - frames_landmarks[frame_]['right_foot_index'])
+            up_hint = normalize(frames_landmarks[frame_]['right_foot_index'] - frames_landmarks[frame_]['right_ankle'])
         needed_v = np.cross(direction, up_hint)
         needed_v = normalize(needed_v)
     elif name == 'rotated_left_knee':
-        up_hint = normalize(frames_landmarks[frame_]['left_ankle'] - frames_landmarks[frame_]['left_foot_index'])
+        up_hint = normalize(frames_landmarks[frame_]['left_foot_index'] - frames_landmarks[frame_]['left_ankle'])
         if abs(np.dot(direction, up_hint)) >= 0.99:
             up_hint = normalize(frames_landmarks[frame_]['left_knee'] - frames_landmarks[frame_]['left_hip'])
         needed_v = np.cross(direction, up_hint)
         needed_v = normalize(needed_v)
     elif name == 'rotated_right_knee':
-        up_hint = normalize(frames_landmarks[frame_]['right_ankle'] - frames_landmarks[frame_]['right_foot_index'])
+        up_hint = normalize(frames_landmarks[frame_]['right_foot_index'] - frames_landmarks[frame_]['right_ankle'])
         if abs(np.dot(direction, up_hint)) >= 0.99:
             up_hint = normalize(frames_landmarks[frame_]['right_knee'] - frames_landmarks[frame_]['right_hip'])
         needed_v = np.cross(direction, up_hint)
@@ -201,24 +199,23 @@ def twist_rotate(name, parent_bone_node, bone_node, frames_landmarks, direction,
             needed_v = normalize(frames_landmarks[frame_]['right_wrist'] - frames_landmarks[frame_]['right_thumb'])
         needed_v = normalize(needed_v)
     elif name == 'rotated_left_elbow':
-        up_hint = normalize(frames_landmarks[frame_]['left_thumb'] - frames_landmarks[frame_]['left_wrist'])
+        needed_v = normalize(frames_landmarks[frame_]['left_thumb'] - frames_landmarks[frame_]['left_wrist'])
         # if abs(np.dot(direction, up_hint)) >= 0.99:
         #     up_hint = normalize(frames_landmarks[frame_]['left_knee'] - frames_landmarks[frame_]['left_hip'])
-        needed_v = np.cross(direction, up_hint)
-        needed_v = normalize(needed_v)
+        needed_v = np.cross(direction, needed_v)
+        needed_v = normalize(-needed_v)
     elif name == 'rotated_right_elbow':
-        up_hint = normalize(frames_landmarks[frame_]['right_thumb'] - frames_landmarks[frame_]['right_wrist'])
+        needed_v = normalize(frames_landmarks[frame_]['right_wrist'] - frames_landmarks[frame_]['right_thumb'])
         # if abs(np.dot(direction, up_hint)) >= 0.99:
         #     up_hint = normalize(frames_landmarks[frame_]['right_knee'] - frames_landmarks[frame_]['right_hip'])
-        needed_v = normalize(up_hint)
+        needed_v = np.cross(direction, needed_v)
+        needed_v = normalize(needed_v)
     elif name == 'rotated_left_wrist':
-        up_hint = normalize(frames_landmarks[frame_]['left_thumb'] - frames_landmarks[frame_]['left_wrist'])
-        needed_v = normalize(up_hint)
+        needed_v = normalize(frames_landmarks[frame_]['left_thumb'] - frames_landmarks[frame_]['left_wrist'])
         # if abs(np.dot(direction, up_hint)) >= 0.99:
         #     up_hint = normalize(frames_landmarks[frame_]['left_knee'] - frames_landmarks[frame_]['left_hip'])
     elif name == 'rotated_right_wrist':
-        up_hint = normalize(frames_landmarks[frame_]['right_thumb'] - frames_landmarks[frame_]['right_wrist'])
-        needed_v = normalize(up_hint)
+        needed_v = normalize(frames_landmarks[frame_]['right_wrist'] - frames_landmarks[frame_]['right_thumb'])
         # if abs(np.dot(direction, up_hint)) >= 0.99:
         #     up_hint = normalize(frames_landmarks[frame_]['right_knee'] - frames_landmarks[frame_]['right_hip'])
 
@@ -472,24 +469,16 @@ def calculate_rotation2(frames_landmarks, nodes, bone_structure, name,
     return R.from_matrix(rot_matrix).as_quat()
 
 
-def calculate_rotation(frames_landmarks, nodes, bone_structure, name,
-                       start, cur, end, standard_direction=False, frame_=0):
-    direction = np.array(end, dtype=float) - np.array(cur, dtype=float)
-    direction = direction / np.linalg.norm(direction)
-
-    if standard_direction:
-        base_direction = np.array([0, 1, 0], dtype=float)
-    else:
-        base_direction = np.array(cur, dtype=float) - np.array(start, dtype=float)
-        base_direction = base_direction / np.linalg.norm(base_direction)
+def calculate_rotation(base_direction, direction):
+    base_direction = normalize(base_direction)
+    direction = normalize(direction)
 
     rotation_ = R.align_vectors([direction], [base_direction])[0]
     quat = rotation_.as_quat()
     return quat
 
 
-def add_animation(scene, nodes, landmarks_frames, bone_struct, diff_rot, h_l_n, rotations_by_frame,
-                  progress_callback=None):
+def add_animation(scene, nodes, landmarks_frames, h_l_n, rotations_by_frame, progress_callback=None, frame_rate='30'):
     anim_stack = fbx.FbxAnimStack.Create(scene, "Animation")
     anim_layer = fbx.FbxAnimLayer.Create(scene, "BaseLayer")
     anim_stack.AddMember(anim_layer)
@@ -497,9 +486,13 @@ def add_animation(scene, nodes, landmarks_frames, bone_struct, diff_rot, h_l_n, 
 
     total = len(landmarks_frames)
 
+    frame_rate_types = {'24': fbx.FbxTime.EMode.eFrames24, '30': fbx.FbxTime.EMode.eFrames30,
+                        '48': fbx.FbxTime.EMode.eFrames48, '60': fbx.FbxTime.EMode.eFrames60,
+                        '120': fbx.FbxTime.EMode.eFrames120}
+
     for frame, landmarks in tqdm(enumerate(landmarks_frames)):
         time = fbx.FbxTime()
-        time.SetFrame(frame, fbx.FbxTime.EMode.eFrames60)
+        time.SetFrame(frame, frame_rate_types[frame_rate])
 
         for current_bone_name, current_bone_node in nodes.items():
             x_curve = current_bone_node.LclTranslation.GetCurve(anim_layer, "X", True)
@@ -511,20 +504,6 @@ def add_animation(scene, nodes, landmarks_frames, bone_struct, diff_rot, h_l_n, 
             z_curve.KeyModifyBegin()
 
             if current_bone_name == 'root' or current_bone_name == 'hip':
-                # global_pos = landmarks[current_bone_name]
-                # parent_bone_node = current_bone_node.GetParent()
-
-                # if parent_bone_node.GetName() != 'RootNode':
-                #     parent_global_pos = landmarks[parent_bone_node.GetName()]
-                # else:
-                #     parent_global_pos = (0, 0, 0)
-                #
-                # local_pos = (
-                #     global_pos[0] - parent_global_pos[0],
-                #     global_pos[1] - parent_global_pos[1],
-                #     global_pos[2] - parent_global_pos[2]
-                # )
-
                 key_index_x = x_curve.KeyAdd(time)[0]
                 key_index_y = y_curve.KeyAdd(time)[0]
                 key_index_z = z_curve.KeyAdd(time)[0]
@@ -533,9 +512,9 @@ def add_animation(scene, nodes, landmarks_frames, bone_struct, diff_rot, h_l_n, 
                 y_curve.KeySetValue(key_index_y, landmarks_frames[frame][current_bone_name][1])
                 z_curve.KeySetValue(key_index_z, landmarks_frames[frame][current_bone_name][2])
 
-                x_curve.KeySetInterpolation(key_index_x, fbx.FbxAnimCurveDef.EInterpolationType.eInterpolationConstant)
-                y_curve.KeySetInterpolation(key_index_y, fbx.FbxAnimCurveDef.EInterpolationType.eInterpolationConstant)
-                z_curve.KeySetInterpolation(key_index_z, fbx.FbxAnimCurveDef.EInterpolationType.eInterpolationConstant)
+                x_curve.KeySetInterpolation(key_index_x, fbx.FbxAnimCurveDef.EInterpolationType.eInterpolationLinear)
+                y_curve.KeySetInterpolation(key_index_y, fbx.FbxAnimCurveDef.EInterpolationType.eInterpolationLinear)
+                z_curve.KeySetInterpolation(key_index_z, fbx.FbxAnimCurveDef.EInterpolationType.eInterpolationLinear)
 
             x_curve.KeyModifyEnd()
             y_curve.KeyModifyEnd()
@@ -549,7 +528,7 @@ def add_animation(scene, nodes, landmarks_frames, bone_struct, diff_rot, h_l_n, 
             y_rot_curve.KeyModifyBegin()
             z_rot_curve.KeyModifyBegin()
 
-            if (current_bone_name != 'root' and  # тут убрал: and current_bone_name != 'hip'
+            if (current_bone_name != 'root' and
                     current_bone_name != 'head_top' and current_bone_name not in h_l_n):
                 key_index_x = x_rot_curve.KeyAdd(time)[0]
                 key_index_y = y_rot_curve.KeyAdd(time)[0]
@@ -576,11 +555,15 @@ def add_animation(scene, nodes, landmarks_frames, bone_struct, diff_rot, h_l_n, 
         progress_callback(total, total, 'Анимация создана')
 
 
-def create_animation(key_points_data_path, model_path, from_json=True, progress_callback=None):
+def create_animation(key_points_data_path, model_path, from_json=True, progress_callback=None, frame_rate='30',
+                     mmodel_path=None):
     if from_json:
         frames_landmarks = metrabs_tools.get_video_data_from_json(key_points_data_path)[0]
     else:
-        frames_landmarks = metrabs_tools.get_data_from_video(key_points_data_path, progress_callback)[0]
+        frames_landmarks = metrabs_tools.get_data_from_video(key_points_data_path, progress_callback, mmodel_path)[0]
+
+    if len(frames_landmarks) == 0:
+        return None
 
     bone_structure = {
         'hip': ['root', 'rotated_hip'],
@@ -680,30 +663,26 @@ def create_animation(key_points_data_path, model_path, from_json=True, progress_
         current_node = nodes[current]
         if daughter is None:
             if current in head_leaf_nodes:
-                rotation = calculate_rotation(frames_landmarks, nodes, bone_structure, current,
-                                              frames_landmarks[frame][parent], frames_landmarks[frame][parent],
-                                              frames_landmarks[frame][current], True)
+                rotation = calculate_rotation(np.array([0., 1., 0.]),
+                                              frames_landmarks[frame][current] - frames_landmarks[frame][parent])
             else:
                 rotation = np.array([0, 0, 0, 1], dtype=float)
         else:
             if current == 'hip':
-                rotation = calculate_rotation(frames_landmarks, nodes, bone_structure, current,
-                                              frames_landmarks[frame][parent],
-                                              (frames_landmarks[frame]['left_hip'] +
-                                               frames_landmarks[frame]['right_hip']) / 2,
-                                              frames_landmarks[frame][current], True)
-
+                rotation = calculate_rotation(np.array([0., 1., 0.]),
+                                              frames_landmarks[frame][current] - (frames_landmarks[frame]['left_hip'] +
+                                                                                  frames_landmarks[frame][
+                                                                                      'right_hip']) / 2)
             elif current in diff_rotated:
-                rotation = calculate_rotation(frames_landmarks, nodes, bone_structure, current,
-                                              frames_landmarks[frame][parent], frames_landmarks[frame][current],
-                                              frames_landmarks[frame][daughter], True)
+                rotation = calculate_rotation(frames_landmarks[frame]['hip'] - (frames_landmarks[frame]['left_hip'] +
+                                                                                frames_landmarks[frame][
+                                                                                    'right_hip']) / 2,
+                                              frames_landmarks[frame][daughter] - frames_landmarks[frame][current])
             else:
-                rotation = calculate_rotation(frames_landmarks, nodes, bone_structure, current,
-                                              frames_landmarks[frame][parent], frames_landmarks[frame][current],
-                                              frames_landmarks[frame][daughter])
+                rotation = calculate_rotation(frames_landmarks[frame][current] - frames_landmarks[frame][parent],
+                                              frames_landmarks[frame][daughter] - frames_landmarks[frame][current])
 
         twist = np.array([0, 0, 0, 1], dtype=float)
-        # if current.startswith('rotated_') and current != 'rotated_hip' and bone_structure[parent][1] is not None:
         if ((current.startswith('rotated_') and current not in ['rotated_hip', 'rotated_left_han', 'rotated_right_han',
                                                                 'rotated_left_foot_index', 'rotated_right_foot_index'])
                 or current == 'hip'):
@@ -712,7 +691,7 @@ def create_animation(key_points_data_path, model_path, from_json=True, progress_
                                                             frames_landmarks[0]['right_hip']) / 2
             else:
                 direction = frames_landmarks[0][bone_structure[parent][1]] - frames_landmarks[0][parent]
-            twist = twist_rotate(current, parent_node, current_node, frames_landmarks, direction, cur_rotations)
+            twist = twist_rotate(current, parent_node, frames_landmarks, direction)
 
         rotate_bone(current, parent_node, current_node, rotation, twist, cur_rotations)
 
@@ -723,10 +702,10 @@ def create_animation(key_points_data_path, model_path, from_json=True, progress_
     total = len(frames_landmarks)
 
     for frame in tqdm(range(1, len(frames_landmarks))):
-        if frame % 2 == 0:
-            add_frames = [0.33, 0.66, 1]
-        else:
-            add_frames = [0.5, 1]
+        # add_frames = [0.33, 0.66, 1]
+        # else:
+        #     add_frames = [0.5, 1]
+        add_frames = [1]
         for t in add_frames:
             hint = None
             cur_locations = {'root': frames_landmarks[frame]['root']}
@@ -735,7 +714,7 @@ def create_animation(key_points_data_path, model_path, from_json=True, progress_
                 flag = False
                 current_node = nodes[current]
                 bone_location = frames_landmarks[frame][current] - frames_landmarks[frame][parent]
-                if current == 'hip' or current in diff_rotated or current in head_leaf_nodes:
+                if current == 'hip':
                     cur_locations[current] = bone_location
                     flag = True
                 locate_bone(bone_location, current_node, flag)
@@ -745,32 +724,30 @@ def create_animation(key_points_data_path, model_path, from_json=True, progress_
                 current_node = nodes[current]
                 if daughter is None:
                     if current in head_leaf_nodes:
-                        rotation = calculate_rotation(frames_landmarks, nodes, bone_structure, current,
-                                                      frames_landmarks[frame][parent], frames_landmarks[frame][parent],
-                                                      frames_landmarks[frame][current], True, frame)
+                        rotation = calculate_rotation(np.array([0., 1., 0.]),
+                                                      frames_landmarks[frame][current] - frames_landmarks[frame][
+                                                          parent])
                     else:
                         rotation = np.array([0, 0, 0, 1], dtype=float)
                 else:
                     if current == 'hip':
-                        # rotation = (0, 0, 0, 0)
-                        rotation = calculate_rotation(frames_landmarks, nodes, bone_structure, current,
-                                                      frames_landmarks[frame][parent],
-                                                      (frames_landmarks[frame]['left_hip'] +
-                                                       frames_landmarks[frame]['right_hip']) / 2,
-                                                      frames_landmarks[frame][current], True, frame)
-
+                        rotation = calculate_rotation(np.array([0., 1., 0.]),
+                                                      frames_landmarks[frame][current] - (
+                                                              frames_landmarks[frame]['left_hip'] +
+                                                              frames_landmarks[frame][
+                                                                  'right_hip']) / 2)
                     elif current in diff_rotated:
-                        rotation = calculate_rotation(frames_landmarks, nodes, bone_structure, current,
-                                                      frames_landmarks[frame][parent], frames_landmarks[frame][current],
-                                                      frames_landmarks[frame][daughter], True, frame)
+                        rotation = calculate_rotation(
+                            frames_landmarks[frame]['hip'] - (frames_landmarks[frame]['left_hip'] +
+                                                              frames_landmarks[frame]['right_hip']) / 2,
+                            frames_landmarks[frame][daughter] - frames_landmarks[frame][current])
                     else:
-                        rotation = calculate_rotation(frames_landmarks, nodes, bone_structure, current,
-                                                      frames_landmarks[frame][parent], frames_landmarks[frame][current],
-                                                      frames_landmarks[frame][daughter], False, frame)
+                        rotation = calculate_rotation(
+                            frames_landmarks[frame][current] - frames_landmarks[frame][parent],
+                            frames_landmarks[frame][daughter] - frames_landmarks[frame][current])
 
                 if (((daughter is not None or current in head_leaf_nodes)
-                     and not current.startswith(
-                            'rotated_')) or current == 'rotated_hip'):  # тут убрал current != 'hip' and
+                     and not current.startswith('rotated_')) or current == 'rotated_hip'):
                     slerp_rotation = slerp_quaternion(quats[current], rotation, t)
                     quats[current] = rotation
                 else:
@@ -778,7 +755,6 @@ def create_animation(key_points_data_path, model_path, from_json=True, progress_
 
                 twist = np.array([0, 0, 0, 1], dtype=float)
 
-                # if current.startswith('rotated_') and current != 'rotated_hip' and bone_structure[parent][1] is not None:
                 if ((current.startswith('rotated_') and current not in ['rotated_hip', 'rotated_left_han',
                                                                         'rotated_right_han', 'rotated_left_foot_index',
                                                                         'rotated_right_foot_index'])
@@ -788,8 +764,7 @@ def create_animation(key_points_data_path, model_path, from_json=True, progress_
                                                                         frames_landmarks[frame]['right_hip']) / 2
                     else:
                         direction = frames_landmarks[frame][bone_structure[parent][1]] - frames_landmarks[frame][parent]
-                    twist = twist_rotate(current, parent_node, current_node, frames_landmarks, direction, cur_rotations,
-                                         frame)
+                    twist = twist_rotate(current, parent_node, frames_landmarks, direction, frame)
 
                 rotate_bone(current, parent_node, current_node, slerp_rotation, twist, cur_rotations)
             rotations.append(cur_rotations)
@@ -798,8 +773,7 @@ def create_animation(key_points_data_path, model_path, from_json=True, progress_
                 progress_callback(frame, total, 'Обработка данных')
 
     scene2, nodes2 = model_download.get_skeleton_nodes(model_path)
-    add_animation(scene2, nodes2, locations, bone_structure, diff_rotated, head_leaf_nodes, rotations,
-                  progress_callback)
+    add_animation(scene2, nodes2, locations, head_leaf_nodes, rotations, progress_callback, frame_rate)
 
     # Экспорт анимированного FBX
     print(model_path)
@@ -811,10 +785,14 @@ def create_animation(key_points_data_path, model_path, from_json=True, progress_
     exporter.Destroy()
     print(f"FBX анимация создана: animated_{model_name}_from_{video_name}.fbx")
 
+    save_path = f"animated_models/animated_{model_name}_from_{video_name}.fbx"
+
     if not from_json:
         source_path = key_points_data_path
         destination_path = f"animated_models/animated_{model_name}_from_{video_name}.mp4"
         shutil.copy2(source_path, destination_path)
+
+    return save_path
 
 
 if __name__ == '__main__':
@@ -822,8 +800,8 @@ if __name__ == '__main__':
     if input_type == 'v':
         i = input('Введите номер тестового видео: ')
         create_animation(f'Source/videos/video{i}.mp4',
-                         'Source/rigged_models/spider_man_model_B.fbx', False)
+                         'Source/rigged_models/spider_man_model_G.fbx', False)
     elif input_type == 'j':
         i = input('Введите номер тестового json: ')
         create_animation(f'Source/json_files/video{i}.json',
-                         'Source/rigged_models/spider_man_model_B.fbx', True)
+                         'Source/rigged_models/spider_man_model_G.fbx', True)

@@ -43,11 +43,14 @@ def load_frames_opencv(path):
     return tf.data.Dataset.from_tensor_slices(frames).batch(8).prefetch(1), imshape, res_mdp
 
 
-def get_data_from_video(video_filepath, progress_callback=None):
+def get_data_from_video(video_filepath, progress_callback=None, mmodel_path=None):
     print('Model_loading')
     if progress_callback:
         progress_callback(0, 10, 'Загрузка модели')
-    model = tfhub.load('metrabs_models/metrabs_s')
+    if mmodel_path is not None:
+        model = tfhub.load(mmodel_path)
+    else:
+        return []
 
     skeleton = 'smpl+head_30'
     joint_names = model.per_skeleton_joint_names[skeleton].numpy().astype(str)
@@ -69,6 +72,10 @@ def get_data_from_video(video_filepath, progress_callback=None):
     count_batches = 0
     total = len(frame_batches)
     for frame_batch in tqdm(frame_batches):
+
+        if progress_callback:
+            progress_callback(count_batches, total, 'Детекция ключевых точек...')
+
         pred = model.detect_poses_batched(
             frame_batch,
             intrinsic_matrix=camera.intrinsic_matrix[tf.newaxis],
@@ -92,12 +99,11 @@ def get_data_from_video(video_filepath, progress_callback=None):
                     person_pose = poses3d_np[i].tolist()
                     person_pose += list(hands_marks[num_frames].values())
                 else:
-                    person_pose = None  # или [[0, 0, 0]] * num_joints
+                    person_pose = None
                 all_people_poses[i].append(person_pose)
 
             num_frames += 1
-        if progress_callback:
-            progress_callback(count_batches, total, 'Детекция ключевых точек...')
+        count_batches += 1
 
     data = data_processing(all_people_poses)
     return data
@@ -142,9 +148,6 @@ def data_processing(data):
         processed_frames_for_one_person = []
         for frame, frame_landmarks in enumerate(person_frames):
             processed_landmark4frame = {}
-            # gl_root_y_new = gl_root_y
-            # for point in data[key_pers_ind][frame]:
-            #     gl_root_y_new = max(gl_root_y_new, point[1])
             if frame_landmarks is not None:
                 for ind, point in enumerate(frame_landmarks[:-8]):
                     processed_landmark4frame[landmark_names[ind]] = np.array([(point[0] - gl_root_x) * scale_factor,

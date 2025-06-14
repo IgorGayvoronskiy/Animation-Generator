@@ -16,8 +16,10 @@ import model_download_window
 
 
 class ResultsWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, main_window):
         super().__init__()
+
+        self.main_window = main_window
         self.save_button = None
         self.rename_button = None
         self.delete_button = None
@@ -35,14 +37,12 @@ class ResultsWindow(QMainWindow):
         self.showMaximized()
 
     def open_model_window(self):
-        self.model_window = model_download_window.ModelDownloadWindow()
-        self.model_window.show()
-        self.hide()
+        self.main_window.slide_to(2)
 
     def open_create_window(self):
-        self.create_window = create_animation_window.CreateAnimationWindow()
-        self.create_window.show()
-        self.hide()
+        self.main_window.get_create_win().load_models()
+        self.main_window.get_create_win().load_metr_models()
+        self.main_window.slide_to(0)
 
     def initUI(self):
         # Центральный виджет с градиентом
@@ -114,7 +114,6 @@ class ResultsWindow(QMainWindow):
             QLabel#listTitle, QLabel#animationTitle{
                 color: #black;
                 font-size: 14px;
-                background-color: #6344BC;
             }
             QMessageBox {
                 color: #black;
@@ -331,7 +330,7 @@ class ResultsWindow(QMainWindow):
             return
 
         item = self.animation_list.item(index)
-        name = item.text().split(' — ')[0]
+        name = item.text()
         path = f"animated_models/{name}"
         video_path = path.strip('.fbx') + '.mp4'
 
@@ -380,8 +379,7 @@ class ResultsWindow(QMainWindow):
             return
 
         item = self.animation_list.item(index)
-        old_name = item.text().split(' — ')[0]
-        anim_time = item.text().split(' — ')[1]
+        old_name = item.text()
         old_path = f"animated_models/{old_name}"
 
         old_video_name = old_name.strip('.fbx') + '.mp4'
@@ -400,7 +398,7 @@ class ResultsWindow(QMainWindow):
                 if os.path.exists(old_video_path):
                     os.rename(old_video_path, new_video_path)
                 self.video_path = new_video_path
-                item.setText(f'{new_name} — {anim_time}')
+                item.setText(new_name)
             except Exception as e:
                 QMessageBox.warning(self, "Ошибка", str(e))
 
@@ -410,7 +408,7 @@ class ResultsWindow(QMainWindow):
             return
 
         item = self.animation_list.item(index)
-        name = item.text().split(' — ')[0]
+        name = item.text()
         source_path = f"animated_models/{name}"
 
         save_path, _ = QFileDialog.getSaveFileName(
@@ -471,23 +469,18 @@ class ResultsWindow(QMainWindow):
 
         self.animation_list.clear()
         for f in animation_files:
-            duration = self.get_fake_duration(f)  # пока фиктивная
-            self.animation_list.addItem(f"{f} — {duration}")
+            self.animation_list.addItem(f)
 
         if animation_files:
             self.update_animation_preview(0)
         else:
             self.animation_label.setText("Нет доступных анимаций")
 
-    def get_fake_duration(self, filename):
-        # TODO: Заменить на реальное чтение длительности из .fbx
-        return "3.2 сек"
-
     def update_animation_preview(self, index):
         if index < 0:
             return
 
-        animation_name = self.animation_list.item(index).text().split(' — ')[0]
+        animation_name = self.animation_list.item(index).text()
         base_name = os.path.splitext(animation_name)[0]
 
         self.video_path = f"animated_models/{base_name}.mp4"

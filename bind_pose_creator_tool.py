@@ -129,23 +129,23 @@ def twist_rotate(name, parent_bone_node, frames_landmarks, direction):
     elif name == 'rotated_left_hip':
         up_hint = normalize(frames_landmarks['left_knee'] - frames_landmarks['left_ankle'])
         if abs(np.dot(direction, up_hint)) >= 0.99:
-            up_hint = normalize(frames_landmarks['left_ankle'] - frames_landmarks['left_foot_index'])
+            up_hint = normalize(frames_landmarks['left_foot_index'] - frames_landmarks['left_ankle'])
         needed_v = np.cross(direction, up_hint)
         needed_v = normalize(needed_v)
     elif name == 'rotated_right_hip':
         up_hint = normalize(frames_landmarks['right_knee'] - frames_landmarks['right_ankle'])
         if abs(np.dot(direction, up_hint)) >= 0.99:
-            up_hint = normalize(frames_landmarks['right_ankle'] - frames_landmarks['right_foot_index'])
+            up_hint = normalize(frames_landmarks['right_foot_index'] - frames_landmarks['right_ankle'])
         needed_v = np.cross(direction, up_hint)
         needed_v = normalize(needed_v)
     elif name == 'rotated_left_knee':
-        up_hint = normalize(frames_landmarks['left_ankle'] - frames_landmarks['left_foot_index'])
+        up_hint = normalize(frames_landmarks['left_foot_index'] - frames_landmarks['left_ankle'])
         if abs(np.dot(direction, up_hint)) >= 0.99:
             up_hint = normalize(frames_landmarks['left_knee'] - frames_landmarks['left_hip'])
         needed_v = np.cross(direction, up_hint)
         needed_v = normalize(needed_v)
     elif name == 'rotated_right_knee':
-        up_hint = normalize(frames_landmarks['right_ankle'] - frames_landmarks['right_foot_index'])
+        up_hint = normalize(frames_landmarks['right_foot_index'] - frames_landmarks['right_ankle'])
         if abs(np.dot(direction, up_hint)) >= 0.99:
             up_hint = normalize(frames_landmarks['right_knee'] - frames_landmarks['right_hip'])
         needed_v = np.cross(direction, up_hint)
@@ -170,48 +170,32 @@ def twist_rotate(name, parent_bone_node, frames_landmarks, direction):
         up_hint = normalize(frames_landmarks['left_wrist'] - frames_landmarks['left_elbow'])
         needed_v = np.cross(direction, up_hint)
         if abs(np.dot(direction, up_hint)) >= 0.99:
-            needed_v = normalize(frames_landmarks[frame_]['left_thumb'] - frames_landmarks[frame_]['left_wrist'])
+            needed_v = normalize(frames_landmarks['left_thumb'] - frames_landmarks['left_wrist'])
         needed_v = normalize(needed_v)
     elif name == 'rotated_right_shoulder':
         up_hint = normalize(frames_landmarks['right_wrist'] - frames_landmarks['right_elbow'])
         needed_v = np.cross(direction, up_hint)
         if abs(np.dot(direction, up_hint)) >= 0.99:
-            needed_v = normalize(frames_landmarks[frame_]['right_wrist'] - frames_landmarks[frame_]['right_thumb'])
+            needed_v = normalize(frames_landmarks['right_wrist'] - frames_landmarks['right_thumb'])
         needed_v = normalize(needed_v)
     elif name == 'rotated_left_elbow':
-        up_hint = normalize(frames_landmarks['left_thumb'] - frames_landmarks['left_wrist'])
-        needed_v = np.cross(direction, up_hint)
-        needed_v = normalize(needed_v)
+        needed_v = normalize(frames_landmarks['left_thumb'] - frames_landmarks['left_wrist'])
     elif name == 'rotated_right_elbow':
-        up_hint = normalize(frames_landmarks['right_thumb'] - frames_landmarks['right_wrist'])
-        needed_v = normalize(up_hint)
+        needed_v = normalize(frames_landmarks['right_wrist'] - frames_landmarks['right_thumb'])
     elif name == 'rotated_left_wrist':
-        up_hint = normalize(frames_landmarks['left_thumb'] - frames_landmarks['left_wrist'])
-        needed_v = normalize(up_hint)
+        needed_v = normalize(frames_landmarks['left_thumb'] - frames_landmarks['left_wrist'])
     elif name == 'rotated_right_wrist':
-        up_hint = normalize(frames_landmarks['right_thumb'] - frames_landmarks['right_wrist'])
-        needed_v = normalize(up_hint)
+        needed_v = normalize(frames_landmarks['right_wrist'] - frames_landmarks['right_thumb'])
 
-    if name != 'hip':
-        parent_global = parent_bone_node.EvaluateGlobalTransform()
-        parent_global_inverse = parent_global.Inverse()
+    parent_global = parent_bone_node.EvaluateGlobalTransform()
+    parent_global_inverse = parent_global.Inverse()
 
-        local_needed_v = normalize(transform_vector(parent_global_inverse, needed_v))
-        local_direction = np.array([0, 1, 0])
+    local_needed_v = normalize(transform_vector(parent_global_inverse, needed_v))
+    local_direction = np.array([0, 1, 0])
 
-        quat = quaternion_twist(np.array([1, 0, 0]), local_needed_v, local_direction).as_quat()
+    quat = quaternion_twist(np.array([1, 0, 0]), local_needed_v, local_direction).as_quat()
 
-        return quat
-    else:
-        parent_global = parent_bone_node.EvaluateGlobalTransform()
-        parent_global_inverse = parent_global.Inverse()
-
-        local_needed_v = normalize(transform_vector(parent_global_inverse, needed_v))
-        local_direction = np.array([0, 1, 0])
-
-        quat = quaternion_twist(np.array([1, 0, 0]), local_needed_v, local_direction).as_quat()
-
-        return quat
+    return quat
 
 
 def normalize(v):
@@ -459,11 +443,7 @@ def create_bind_pose(file_path, from_json=True, progress_callback=None):
                                                                 'rotated_right_han', 'rotated_left_foot_index',
                                                                 'rotated_right_foot_index'])
                 and current != 'hip'):
-            if current == 'hip':
-                direction = frames_landmarks[current] - (frames_landmarks['left_hip'] +
-                                                         frames_landmarks['right_hip']) / 2
-            else:
-                direction = frames_landmarks[bone_structure[parent][1]] - frames_landmarks[parent]
+            direction = frames_landmarks[bone_structure[parent][1]] - frames_landmarks[parent]
             twist = twist_rotate(current, parent_node, frames_landmarks, direction)
 
         rotate_bone(current, parent_node, current_node, rotation, twist)
@@ -474,7 +454,7 @@ def create_bind_pose(file_path, from_json=True, progress_callback=None):
     # Сохраняем FBX
     exporter = fbx.FbxExporter.Create(manager, "")
     name_file = file_path.split('/')[-1].split('.')[0]
-    save_path = f'Source/Sceletons/{name_file}_test.fbx'
+    save_path = f'Source/Sceletons/{name_file}.fbx'
     exporter.Initialize(save_path, -1, manager.GetIOSettings())
     exporter.Export(scene)
     exporter.Destroy()
@@ -484,4 +464,4 @@ def create_bind_pose(file_path, from_json=True, progress_callback=None):
 
 
 if __name__ == '__main__':
-    create_bind_pose("C:/Users/djdjd/Downloads/spider_man_bind_pose.png", False)
+    create_bind_pose("Source/json_files/spider_man_bind_pose.json", True)

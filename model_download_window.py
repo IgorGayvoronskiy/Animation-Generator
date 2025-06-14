@@ -17,8 +17,10 @@ import results_window
 
 
 class ModelDownloadWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, main_window):
         super().__init__()
+
+        self.main_window = main_window
         self.worker = None
         self.thread = None
         self.upload_window = None
@@ -45,14 +47,13 @@ class ModelDownloadWindow(QMainWindow):
         self.showMaximized()
 
     def open_res_window(self):
-        self.res_window = results_window.ResultsWindow()
-        self.res_window.show()
-        self.hide()
+        self.main_window.get_res_win().load_animations()
+        self.main_window.slide_to(1)
 
     def open_create_window(self):
-        self.create_window = create_animation_window.CreateAnimationWindow()
-        self.create_window.show()
-        self.hide()
+        self.main_window.get_create_win().load_models()
+        self.main_window.get_create_win().load_metr_models()
+        self.main_window.slide_to(0)
 
     def initUI(self):
         # Центральный виджет с градиентом

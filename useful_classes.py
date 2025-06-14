@@ -520,24 +520,28 @@ class SkeletonWorker(QObject):
 
 class AnimationWorker(QObject):
     progress = pyqtSignal(int, int, str)  # value, total, message
-    finished = pyqtSignal()  # путь к FBX или пустая строка
+    finished = pyqtSignal(str)  # путь к FBX или пустая строка
 
-    def __init__(self, file_path, model_path, from_json):
+    def __init__(self, file_path, model_path, from_json, frame_rate, metr_model_path):
         super().__init__()
         self.file_path = file_path
         self.model_path = model_path
         self.from_json = from_json
+        self.frame_rate = frame_rate
+        self.metr_model_path = metr_model_path
 
     def run(self):
         from animation_generator import create_animation
         try:
-            create_animation(
+            path = create_animation(
                 key_points_data_path=self.file_path,
                 model_path=self.model_path,
                 from_json=self.from_json,
-                progress_callback=self.progress.emit
+                progress_callback=self.progress.emit,
+                frame_rate=self.frame_rate,
+                mmodel_path=self.metr_model_path
             )
-            self.finished.emit()
+            self.finished.emit(path or '')
         except Exception as e:
             print(f"Ошибка: {e}")
-            self.finished.emit()
+            self.finished.emit('')
