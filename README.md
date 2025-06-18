@@ -14,7 +14,7 @@
 - Управление списком результатов  
 - Выбор между несколькими предобученными MeTRAbs моделями  
 
-## <link type="image/png" sizes="16x16" rel="icon" href=".../icons8-скриншот-nolan-16.png"> Скриншоты
+## <img width="64" height="64" src="https://img.icons8.com/nolan/64/screenshot.png" alt="screenshot"/> Скриншоты
 
 <h3>✨ Окно создания анимации</h3>
 <img src="Source/Images/screenshot_main.png" width="400"/>
