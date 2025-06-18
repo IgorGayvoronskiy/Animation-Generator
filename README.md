@@ -16,4 +16,5 @@
 ## 🖥️ Скриншоты
 
 ![Главное окно](Source/Images/screenshot_main.png)
+![Окно результатов](Source/Images/screenshot_results.png)
 ![Окно загрузки модели](Source/Images/screenshot_model_upload.png)
