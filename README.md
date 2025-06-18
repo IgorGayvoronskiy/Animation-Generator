@@ -16,11 +16,11 @@
 
 ## 🖥️ Скриншоты
 
-### ✨ Окно создания анимации
-![Главное окно](Source/Images/screenshot_main.png)
+<h3>🧭 Главное окно</h3>
+<img src="Source/Images/screenshot_main.png" width="600"/>
 
-### 🗂 Окно результатов
-![Окно результатов](Source/Images/screenshot_results.png)
+<h3>📂 Окно результатов</h3>
+<img src="Source/Images/screenshot_results.png" width="600"/>
 
-### ➕ Окно загрузки модели
-![Окно загрузки модели](Source/Images/screenshot_model_upload.png)
+<h3>⬆️ Окно загрузки модели</h3>
+<img src="Source/Images/screenshot_model_upload.png" width="600"/>
