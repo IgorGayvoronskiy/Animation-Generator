@@ -1,12 +1,10 @@
 import math
-import sys
 import fbx
-import metrabs_tools
+from metrabs_tools import get_data_from_image, get_image_data_from_json
 import numpy as np
-from tqdm import tqdm
 
 from scipy.spatial.transform import Rotation as R
-from scipy.spatial.transform import Slerp
+from useful_classes import resource_path
 
 
 def create_bone(manager, name, start, end, parent_node, flag=False, diff=None):
@@ -302,11 +300,11 @@ def calculate_rotation(start, cur, end, standard_direction=False):
 
 def create_bind_pose(file_path, from_json=True, progress_callback=None):
     if from_json:
-        is_done, frames_landmarks = metrabs_tools.get_image_data_from_json(file_path)
+        is_done, frames_landmarks = get_image_data_from_json(file_path)
         if not is_done:
             return None
     else:
-        is_done, frames_landmarks = metrabs_tools.get_data_from_image(file_path, progress_callback)
+        is_done, frames_landmarks = get_data_from_image(file_path, progress_callback)
         if not is_done:
             return None
 
@@ -454,7 +452,7 @@ def create_bind_pose(file_path, from_json=True, progress_callback=None):
     # Сохраняем FBX
     exporter = fbx.FbxExporter.Create(manager, "")
     name_file = file_path.split('/')[-1].split('.')[0]
-    save_path = f'Source/Sceletons/{name_file}.fbx'
+    save_path = resource_path(f'Source/Skeletons/{name_file}.fbx')
     exporter.Initialize(save_path, -1, manager.GetIOSettings())
     exporter.Export(scene)
     exporter.Destroy()

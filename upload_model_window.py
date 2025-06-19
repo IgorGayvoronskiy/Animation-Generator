@@ -5,13 +5,12 @@ from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QLinearGradient, QColor, QPalette, QBrush, QPixmap, QIcon
 from PyQt5.QtWidgets import (
     QPushButton, QWidget, QVBoxLayout,
-    QLabel, QFileDialog, QLineEdit, QMessageBox, QApplication, QSpacerItem, QSizePolicy, QHBoxLayout,
+    QFileDialog, QApplication, QSpacerItem, QSizePolicy, QHBoxLayout,
     QGraphicsDropShadowEffect, QMainWindow
 )
 import sys
 
-import model_download_window
-from useful_classes import ImageDropLabel, FbxDropLabel
+from useful_classes import ImageDropLabel, FbxDropLabel, resource_path
 
 
 class UploadWindow(QMainWindow):
@@ -23,7 +22,7 @@ class UploadWindow(QMainWindow):
         self.model_label = None
         self.choose_image_btn = None
         self.image_label = None
-        self.setWindowIcon(QIcon("Source/Images/AM2.ico"))
+        self.setWindowIcon(QIcon(resource_path("Source/Images/AM2.ico")))
         self.setWindowTitle("Загрузка модели и изображения")
         self.initUI()
 
@@ -131,7 +130,7 @@ class UploadWindow(QMainWindow):
         self.model_label.setGraphicsEffect(model_shadow)
 
         self.choose_model_btn = QPushButton("Выбрать модель")
-        self.choose_model_btn.clicked.connect(self.select_fbx_file) # TODO: надо функцию сделать
+        self.choose_model_btn.clicked.connect(self.select_fbx_file)
 
         model_frame.addWidget(self.model_label)
         model_frame.addWidget(self.choose_model_btn)
@@ -152,7 +151,7 @@ class UploadWindow(QMainWindow):
         return layout
 
     def image_label_reset(self):
-        default_pixmap = QPixmap("Source/Images/no_image.jpg")
+        default_pixmap = QPixmap(resource_path("Source/Images/no_image.jpg"))
         if not default_pixmap.isNull():
             self.image_label.setPixmap(default_pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio))
         else:
@@ -203,7 +202,7 @@ class UploadWindow(QMainWindow):
         if self.model_path is not None:
             model_name = self.model_path.split('/')[-1]
 
-            new_model_path = f'Source/rigged_models/{model_name}'
+            new_model_path = resource_path(f'Source/rigged_models/{model_name}')
             new_image_path = new_model_path.split('.')[0] + '.png'
 
             shutil.copy2(self.model_path, new_model_path)
@@ -213,7 +212,6 @@ class UploadWindow(QMainWindow):
 
             self.model_uploaded.emit()
             self.close()
-
 
 
 if __name__ == "__main__":

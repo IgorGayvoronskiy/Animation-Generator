@@ -3,7 +3,8 @@ import sys
 import time
 
 import cv2
-from useful_classes import TrapezoidWidget, VideoDropLabel, ProgressOverlay, VideoPlayerPopup, AnimationWorker
+from useful_classes import (TrapezoidWidget, VideoDropLabel, ProgressOverlay, VideoPlayerPopup, AnimationWorker,
+                            resource_path)
 from PyQt5.QtCore import Qt, QCoreApplication, QThread
 from PyQt5.QtGui import QPixmap, QColor, QLinearGradient, QPalette, QBrush, QImage
 from PyQt5.QtWidgets import (
@@ -11,10 +12,6 @@ from PyQt5.QtWidgets import (
     QHBoxLayout, QSpacerItem, QSizePolicy, QFileDialog,
     QMainWindow, QGraphicsDropShadowEffect, QComboBox, QProgressBar, QMessageBox, QInputDialog
 )
-
-import animation_generator
-import model_download_window
-import results_window
 
 
 class CreateAnimationWindow(QMainWindow):
@@ -151,12 +148,6 @@ class CreateAnimationWindow(QMainWindow):
                 border-left: 1px solid #444;
             }
 
-            QComboBox::down-arrow {
-                image: url(Source/Images/icons8-стрелка-вниз-64_2.png);
-                width: 20px;
-                height: 20px;
-            }
-
             QComboBox QAbstractItemView {
                 background-color: #2c2c2c;
                 color: #ffffff;
@@ -197,6 +188,32 @@ class CreateAnimationWindow(QMainWindow):
                 font-size: 14px;
             }
         """)
+
+        arrow_icon_path = resource_path("Source/Images/icons8-стрелка-вниз-64_2.png").replace("\\", "/")
+
+        self.model_combobox.setStyleSheet(f"""
+            QComboBox::down-arrow {{
+                image: url("{arrow_icon_path}");
+                width: 20px;
+                height: 20px;
+            }}
+        """)
+
+        self.frame_combobox.setStyleSheet(f"""
+                    QComboBox::down-arrow {{
+                        image: url("{arrow_icon_path}");
+                        width: 20px;
+                        height: 20px;
+                    }}
+                """)
+
+        self.metr_model_combobox.setStyleSheet(f"""
+                    QComboBox::down-arrow {{
+                        image: url("{arrow_icon_path}");
+                        width: 20px;
+                        height: 20px;
+                    }}
+                """)
 
     def create_nav_bar(self):
         container = QWidget()
@@ -282,7 +299,7 @@ class CreateAnimationWindow(QMainWindow):
         self.video_label.setFixedSize(500, 500)
         self.video_label.setAlignment(Qt.AlignCenter)
 
-        default_pixmap = QPixmap("Source/Images/no_video3.png")
+        default_pixmap = QPixmap(resource_path("Source/Images/no_video3.png"))
         if not default_pixmap.isNull():
             self.video_label.setPixmap(default_pixmap.scaled(self.video_label.size(), Qt.KeepAspectRatio))
         else:
@@ -349,7 +366,7 @@ class CreateAnimationWindow(QMainWindow):
         combo_box_frame = QHBoxLayout()
 
         self.frame_combobox = QComboBox()
-        self.frame_combobox.currentIndexChanged.connect(self.update_frame_preview)
+        self.frame_combobox.currentIndexChanged.connect(self.update_select_frame)
         self.load_frames()
 
         self.metr_model_combobox = QComboBox()
@@ -389,7 +406,7 @@ class CreateAnimationWindow(QMainWindow):
             self.json_path = None
             self.toggle_mode_btn.setText("Режим: Видео")
             self.choose_video_btn.setText("Выбрать видео")
-            default_pixmap = QPixmap("Source/Images/no_video3.png")
+            default_pixmap = QPixmap(resource_path("Source/Images/no_video3.png"))
             if not default_pixmap.isNull():
                 self.video_label.setPixmap(default_pixmap.scaled(self.video_label.size(), Qt.KeepAspectRatio))
             else:
@@ -460,7 +477,7 @@ class CreateAnimationWindow(QMainWindow):
         self.video_player_window.show()
 
     def load_models(self):
-        models_dir = "Source/rigged_models"
+        models_dir = resource_path("Source/rigged_models")
         if not os.path.exists(models_dir):
             return
 
@@ -478,10 +495,10 @@ class CreateAnimationWindow(QMainWindow):
         if not model_name:
             return
 
-        self.model_path = f"Source/rigged_models/{model_name}"
-        preview_path = os.path.join("Source/rigged_models", os.path.splitext(model_name)[0] + ".png")
+        self.model_path = resource_path(f"Source/rigged_models/{model_name}")
+        preview_path = resource_path("Source/rigged_models/" + os.path.splitext(model_name)[0] + ".png")
         if not os.path.exists(preview_path):
-            preview_path = os.path.join("Source/rigged_models", os.path.splitext(model_name)[0] + ".jpg")
+            preview_path = resource_path("Source/rigged_models/" + os.path.splitext(model_name)[0] + ".jpg")
 
         if os.path.exists(preview_path):
             pixmap = QPixmap(preview_path)
@@ -494,13 +511,13 @@ class CreateAnimationWindow(QMainWindow):
         self.frame_combobox.clear()
         self.frame_combobox.addItems(frames)
 
-        self.update_frame_preview(0)
+        self.update_select_frame(0)
 
-    def update_frame_preview(self, index):
+    def update_select_frame(self, index):
         self.select_frame = self.frame_combobox.itemText(index).strip(' fps')
 
     def load_metr_models(self):
-        models_dir = "metrabs_models"
+        models_dir = resource_path("metrabs_models")
         if not os.path.exists(models_dir):
             return
 
@@ -516,7 +533,7 @@ class CreateAnimationWindow(QMainWindow):
         if not model_name:
             return
 
-        self.metr_model_path = f"metrabs_models/{model_name}"
+        self.metr_model_path = resource_path(f"metrabs_models/{model_name}")
 
     def update_progress(self, value, total):
         self.progress_bar.setMaximum(total)
@@ -557,7 +574,7 @@ class CreateAnimationWindow(QMainWindow):
             new_name, ok = QInputDialog.getText(self, "Название файла", "Задайте имя файла (с расширением .fbx):",
                                                 text=name)
             if ok and new_name:
-                new_path = f"animated_models/{new_name}"
+                new_path = resource_path(f"animated_models/{new_name}")
                 new_video_path = new_path.strip('.fbx') + '.mp4'
                 if os.path.exists(new_path):
                     QMessageBox.warning(self, "Ошибка", "Файл с таким именем уже существует.")

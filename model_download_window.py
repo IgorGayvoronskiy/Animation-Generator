@@ -1,19 +1,16 @@
 import os
 import sys
 
-import upload_model_window
-from multiprocessing import Process
-from useful_classes import TrapezoidWidget, JsonImageDropLabel, ProgressOverlay, GifButton, SkeletonWorker
-from PyQt5.QtCore import Qt, QCoreApplication, QThread
-from PyQt5.QtGui import QPixmap, QColor, QLinearGradient, QPalette, QBrush, QImage, QFont, QMovie
+from upload_model_window import UploadWindow
+from useful_classes import (TrapezoidWidget, JsonImageDropLabel, ProgressOverlay, GifButton, SkeletonWorker,
+                            resource_path)
+from PyQt5.QtCore import Qt, QThread
+from PyQt5.QtGui import QPixmap, QColor, QLinearGradient, QPalette, QBrush, QMovie
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QPushButton, QLabel, QVBoxLayout,
     QHBoxLayout, QSpacerItem, QSizePolicy, QFileDialog,
-    QMainWindow, QGraphicsDropShadowEffect, QComboBox, QProgressBar, QMessageBox, QListWidget, QInputDialog
+    QMainWindow, QGraphicsDropShadowEffect, QProgressBar, QMessageBox, QListWidget, QInputDialog
 )
-
-import create_animation_window
-import results_window
 
 
 class ModelDownloadWindow(QMainWindow):
@@ -230,7 +227,7 @@ class ModelDownloadWindow(QMainWindow):
         self.choose_image_btn = QPushButton("Выбрать изображение")
         self.skeleton_create_btn = QPushButton("Создать скелет")
         self.choose_image_btn.clicked.connect(self.select_json_img_file)
-        self.skeleton_create_btn.clicked.connect(self.create_sceleton)
+        self.skeleton_create_btn.clicked.connect(self.create_skeleton)
 
         rig_container = QVBoxLayout()
         rig_header = QHBoxLayout()
@@ -330,9 +327,9 @@ class ModelDownloadWindow(QMainWindow):
         self.model_list.setContentsMargins(0, 0, 0, 0)
         self.model_list.currentRowChanged.connect(self.update_model_preview)
 
-        self.delete_button = GifButton("Source/icons/delete.gif")
-        self.rename_button = GifButton("Source/icons/rename.gif")
-        self.download_button = GifButton("Source/icons/save.gif")
+        self.delete_button = GifButton(resource_path("Source/icons/delete.gif"))
+        self.rename_button = GifButton(resource_path("Source/icons/rename.gif"))
+        self.download_button = GifButton(resource_path("Source/icons/save.gif"))
         self.delete_button.setFixedSize(60, 60)
         self.rename_button.setFixedSize(60, 60)
         self.download_button.setFixedSize(60, 60)
@@ -384,7 +381,7 @@ class ModelDownloadWindow(QMainWindow):
         return layout
 
     def rig_label_reset(self):
-        default_pixmap = QPixmap("Source/Images/no_image.jpg")
+        default_pixmap = QPixmap(resource_path("Source/Images/no_image.jpg"))
         if not default_pixmap.isNull():
             self.rigging_label.setPixmap(default_pixmap.scaled(self.rigging_label.size(), Qt.KeepAspectRatio))
         else:
@@ -441,7 +438,7 @@ class ModelDownloadWindow(QMainWindow):
                     self.rigging_label.setText("Ошибка загрузки изображения")
                 self.image_path = file
 
-    def create_sceleton(self):
+    def create_skeleton(self):
         if self.json_path is not None or self.image_path is not None:
             self.start_skeleton_thread()
 
@@ -498,7 +495,7 @@ class ModelDownloadWindow(QMainWindow):
 
         item = self.model_list.item(index)
         name = item.text()
-        path = f"Source/rigged_models/{name}"
+        path = resource_path(f"Source/rigged_models/{name}")
         image_path = path.strip('.fbx') + '.png'
 
         reply = QMessageBox().question(
@@ -514,15 +511,15 @@ class ModelDownloadWindow(QMainWindow):
                 if os.path.exists(image_path):
                     os.remove(image_path)
                 self.model_list.takeItem(index)
-                # self.play_delete_animation()
+                self.play_delete_animation()
                 self.model_label.setText("Модель удалена")
             except Exception as e:
                 QMessageBox.warning(self, "Ошибка", str(e))
 
     def play_delete_animation(self):
-        gif_path = "Source/icons/anim_deleted.gif"
+        gif_path = resource_path("Source/icons/anim_deleted.gif")
         if not os.path.exists(gif_path):
-            self.model_label.setText("Удалено")  # fallback
+            self.model_label.setText("Удалено")
             return
 
         movie = QMovie(gif_path)
@@ -545,14 +542,14 @@ class ModelDownloadWindow(QMainWindow):
             return
         item = self.model_list.item(index)
         old_name = item.text()
-        old_path = f"Source/rigged_models/{old_name}"
+        old_path = resource_path(f"Source/rigged_models/{old_name}")
 
         old_model_img_path = old_path.strip('.fbx') + '.png'
 
         new_name, ok = QInputDialog.getText(self, "Переименование", "Новое имя файла (с расширением .fbx):",
                                             text=old_name)
         if ok and new_name:
-            new_path = f"Source/rigged_models/{new_name}"
+            new_path = resource_path(f"Source/rigged_models/{new_name}")
             new_model_img_path = new_path.rstrip('.fbx') + '.png'
             if os.path.exists(new_path):
                 QMessageBox.warning(self, "Ошибка", "Файл с таким именем уже существует.")
@@ -566,17 +563,17 @@ class ModelDownloadWindow(QMainWindow):
                 QMessageBox.warning(self, "Ошибка", str(e))
 
     def upload_model(self):
-        self.upload_window = upload_model_window.UploadWindow()
+        self.upload_window = UploadWindow()
         self.upload_window.model_uploaded.connect(self.load_models)
         self.upload_window.show()
 
     def load_models(self):
-        model_dir = "Source/rigged_models"
+        model_dir = resource_path("Source/rigged_models")
         if not os.path.exists(model_dir):
             return
         model_files = [
             f for f in os.listdir(model_dir)
-            if f.lower().endswith('.fbx')  # возможно надо будет расширить
+            if f.lower().endswith('.fbx')
         ]
 
         self.model_list.clear()
@@ -595,7 +592,7 @@ class ModelDownloadWindow(QMainWindow):
         model_name = self.model_list.item(index).text()
         base_name = os.path.splitext(model_name)[0]
 
-        model_image_path = f"Source/rigged_models/{base_name}.png"
+        model_image_path = resource_path(f"Source/rigged_models/{base_name}.png")
 
         if model_image_path is not None and os.path.exists(model_image_path):
             default_pixmap = QPixmap(model_image_path)

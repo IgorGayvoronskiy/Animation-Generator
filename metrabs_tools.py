@@ -1,8 +1,10 @@
-import sys
-from tqdm import tqdm
+import os.path
 import time
 
-from main import mp, tf, tfhub
+from main import tf, tf_hub, mp
+
+from tqdm import tqdm
+from useful_classes import resource_path
 
 # !pip install git+https://github.com/isarandi/cameralib
 
@@ -44,17 +46,16 @@ def load_frames_opencv(path):
 
 
 def get_data_from_video(video_filepath, progress_callback=None, mmodel_path=None):
+
     print('Model_loading')
     if progress_callback:
         progress_callback(0, 10, 'Загрузка модели')
     if mmodel_path is not None:
-        model = tfhub.load(mmodel_path)
+        model = tf_hub.load(mmodel_path)
     else:
         return []
 
     skeleton = 'smpl+head_30'
-    joint_names = model.per_skeleton_joint_names[skeleton].numpy().astype(str)
-    joint_edges = model.per_skeleton_joint_edges[skeleton].numpy()
 
     frame_batches, imshape, hands_marks = load_frames_opencv(video_filepath)
 
@@ -64,7 +65,6 @@ def get_data_from_video(video_filepath, progress_callback=None, mmodel_path=None
     all_people_poses = []
     max_people = 0
 
-    start = time.time()
     print('Start')
 
     num_frames = 0
@@ -83,7 +83,6 @@ def get_data_from_video(video_filepath, progress_callback=None, mmodel_path=None
         )
 
         for frame, boxes, poses3d in zip(frame_batch, pred['boxes'], pred['poses3d']):
-            frame_np = frame.numpy()
             poses3d_np = poses3d.numpy()
             num_people = poses3d_np.shape[0]
 
@@ -110,6 +109,9 @@ def get_data_from_video(video_filepath, progress_callback=None, mmodel_path=None
 
 
 def get_video_data_from_json(json_filepath):
+    print(json_filepath)
+    print(os.path.exists(json_filepath))
+
     with open(json_filepath) as f:
         data = json.load(f)  # (1, 580, 30, 3)
         res = []
@@ -125,6 +127,7 @@ def get_video_data_from_json(json_filepath):
 
 
 def data_processing(data):
+    print(len(data[0]))
     gl_root_x, gl_root_y, gl_root_z = 0, -1000, 0
     processed_data = []
     scale_factor = 1 / 10
@@ -202,7 +205,11 @@ def get_data_from_image(image_filepath, progress_callback=None):
     if progress_callback:
         progress_callback(0, 10, 'Загрузка модели')
     skeleton_type = 'smpl+head_30'
-    model = tfhub.load('metrabs_models/metrabs_s')
+    model_path = resource_path('metrabs_models/metrabs_l')
+    if os.path.exists(model_path):
+        model = tf_hub.load(model_path)
+    else:
+        model = tf_hub.load('https://bit.ly/metrabs_l')
     mp_pose = mp.solutions.pose
     pose = mp_pose.Pose()
 
@@ -266,7 +273,7 @@ def get_image_data_from_json(json_filepath):
 
 def data_for_bind_pose_processing(data, scale_k=10):
     gl_root_x, gl_root_y, gl_root_z = 0, -1000, 0
-    scale_factor = 1 / scale_k  # надо доработать, чтобы здесь в знаменателе стоял коэффициент, передаваемый в функцию
+    scale_factor = 1 / scale_k
 
     landmark_names = ['hip', 'left_hip', 'right_hip', 'bell', 'left_knee', 'right_knee', 'spin', 'left_ankle',
                       'right_ankle', 'thor', 'left_foot_index', 'right_foot_index', 'neck', 'left_collarbone',

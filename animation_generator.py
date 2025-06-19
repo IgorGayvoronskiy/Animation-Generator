@@ -1,14 +1,14 @@
 import shutil
 import math
 import fbx
-import metrabs_tools
+from metrabs_tools import get_data_from_video, get_video_data_from_json
 import model_download
 import numpy as np
-import time as tm
 
 from tqdm import tqdm
 from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
+from useful_classes import resource_path
 
 
 def create_bone(manager, name, start, end, parent_node, flag=False):
@@ -164,26 +164,18 @@ def twist_rotate(name, parent_bone_node, frames_landmarks, direction, frame_=0):
         needed_v = normalize(needed_v)
     elif name == 'rotated_left_ankle':
         up_hint = normalize(frames_landmarks[frame_]['left_knee'] - frames_landmarks[frame_]['left_ankle'])
-        # if abs(np.dot(direction, up_hint)) >= 0.99:
-        #     up_hint = normalize(frames_landmarks[frame_]['left_knee'] - frames_landmarks[frame_]['left_hip'])
         needed_v = np.cross(direction, up_hint)
         needed_v = normalize(needed_v)
     elif name == 'rotated_right_ankle':
         up_hint = normalize(frames_landmarks[frame_]['right_knee'] - frames_landmarks[frame_]['right_ankle'])
-        # if abs(np.dot(direction, up_hint)) >= 0.99:
-        #     up_hint = normalize(frames_landmarks[frame_]['right_knee'] - frames_landmarks[frame_]['right_hip'])
         needed_v = np.cross(direction, up_hint)
         needed_v = normalize(needed_v)
     elif name == 'rotated_left_collarbone':
         up_hint = normalize(frames_landmarks[frame_]['neck'] - frames_landmarks[frame_]['thor'])
-        # if abs(np.dot(direction, up_hint)) >= 0.99:
-        #     up_hint = normalize(frames_landmarks[frame_]['left_knee'] - frames_landmarks[frame_]['left_hip'])
         needed_v = np.cross(direction, up_hint)
         needed_v = normalize(needed_v)
     elif name == 'rotated_right_collarbone':
         up_hint = normalize(frames_landmarks[frame_]['neck'] - frames_landmarks[frame_]['thor'])
-        # if abs(np.dot(direction, up_hint)) >= 0.99:
-        #     up_hint = normalize(frames_landmarks[frame_]['right_knee'] - frames_landmarks[frame_]['right_hip'])
         needed_v = np.cross(direction, up_hint)
         needed_v = normalize(needed_v)
     elif name == 'rotated_left_shoulder':
@@ -200,273 +192,31 @@ def twist_rotate(name, parent_bone_node, frames_landmarks, direction, frame_=0):
         needed_v = normalize(needed_v)
     elif name == 'rotated_left_elbow':
         needed_v = normalize(frames_landmarks[frame_]['left_thumb'] - frames_landmarks[frame_]['left_wrist'])
-        # if abs(np.dot(direction, up_hint)) >= 0.99:
-        #     up_hint = normalize(frames_landmarks[frame_]['left_knee'] - frames_landmarks[frame_]['left_hip'])
         needed_v = np.cross(direction, needed_v)
         needed_v = normalize(-needed_v)
     elif name == 'rotated_right_elbow':
         needed_v = normalize(frames_landmarks[frame_]['right_wrist'] - frames_landmarks[frame_]['right_thumb'])
-        # if abs(np.dot(direction, up_hint)) >= 0.99:
-        #     up_hint = normalize(frames_landmarks[frame_]['right_knee'] - frames_landmarks[frame_]['right_hip'])
         needed_v = np.cross(direction, needed_v)
         needed_v = normalize(needed_v)
     elif name == 'rotated_left_wrist':
         needed_v = normalize(frames_landmarks[frame_]['left_thumb'] - frames_landmarks[frame_]['left_wrist'])
-        # if abs(np.dot(direction, up_hint)) >= 0.99:
-        #     up_hint = normalize(frames_landmarks[frame_]['left_knee'] - frames_landmarks[frame_]['left_hip'])
     elif name == 'rotated_right_wrist':
         needed_v = normalize(frames_landmarks[frame_]['right_wrist'] - frames_landmarks[frame_]['right_thumb'])
-        # if abs(np.dot(direction, up_hint)) >= 0.99:
-        #     up_hint = normalize(frames_landmarks[frame_]['right_knee'] - frames_landmarks[frame_]['right_hip'])
 
-    if name != 'hip':
-        parent_global = parent_bone_node.EvaluateGlobalTransform()
-        parent_global_inverse = parent_global.Inverse()
+    parent_global = parent_bone_node.EvaluateGlobalTransform()
+    parent_global_inverse = parent_global.Inverse()
 
-        local_needed_v = normalize(transform_vector(parent_global_inverse, needed_v))
-        local_direction = np.array([0, 1, 0])
+    local_needed_v = normalize(transform_vector(parent_global_inverse, needed_v))
+    local_direction = np.array([0, 1, 0])
 
-        quat = quaternion_twist(np.array([1, 0, 0]), local_needed_v, local_direction).as_quat()
+    quat = quaternion_twist(np.array([1, 0, 0]), local_needed_v, local_direction).as_quat()
 
-        # quat_fbx = fbx.FbxQuaternion(quat[0], quat[1], quat[2], quat[3])
-        # rotation_matrix = fbx.FbxAMatrix()
-        # rotation_matrix.SetQ(quat_fbx)
-        #
-        # rotation_ = rotation_matrix.GetR()
-        #
-        # rotation_ = fbx.FbxDouble3(rotation_[0], rotation_[1], rotation_[2])
-        #
-        # angles[name] = rotation_
-        #
-        # bone_node.SetRotationOrder(fbx.FbxNode.EPivotSet.eSourcePivot, fbx.EFbxRotationOrder.eEulerYXZ)
-        # bone_node.LclRotation.Set(rotation_)
-
-        return quat
-    else:
-        parent_global = parent_bone_node.EvaluateGlobalTransform()
-        parent_global_inverse = parent_global.Inverse()
-
-        local_needed_v = normalize(transform_vector(parent_global_inverse, needed_v))
-        local_direction = np.array([0, 1, 0])
-
-        quat = quaternion_twist(np.array([1, 0, 0]), local_needed_v, local_direction).as_quat()
-
-        return quat
-
-
-def add_twist(name, rot_matr, twist_axis=None):
-    if twist_axis is None:
-        twist_axis = np.array([0, 1, 0])
-
-    q = rot_matr.GetQ()
-    numpy_q = np.array([q[0], q[1], q[2], q[3]], dtype=float)
-    w, v = numpy_q[-1], numpy_q[:-1]
-
-    proj = np.dot(v, twist_axis) * twist_axis
-    twist_q = np.array([proj[0], proj[1], proj[2], w])
-    twist_q = normalize(twist_q)
-    twist_len = np.linalg.norm(twist_q)
-    if twist_len <= 1e-8:
-        twist_q = np.array([0.0, 0.0, 0.0, 1.0])
-
-    twist_q_fbx = fbx.FbxQuaternion(*twist_q)
-    twist_matr = fbx.FbxAMatrix()
-    twist_matr.SetQ(twist_q_fbx)
-
-    swing_matr = rot_matr * twist_matr.Inverse()
-
-    a = swing_matr.GetQ()
-    swing_numpy = np.array([a[0], a[1], a[2], a[3]])
-    swing_numpy = normalize(swing_numpy)
-
-    swing_q = R.from_quat(swing_numpy)
-    # swing_matr = fbx.FbxAMatrix()
-    # swing_matr.SetQ(swing_q)
-
-    rot = R.from_quat(numpy_q)
-    rotated_twist_axis = rot.apply(twist_axis)
-
-    proj = np.dot(v, rotated_twist_axis) * rotated_twist_axis
-    new_twist_q = np.array([0, 100, 0, w])
-    new_twist_q = normalize(new_twist_q)
-
-    # new_twist_q = np.array([0.0, 0.0, 0.0, 1.0], dtype=float)
-    # new_twist_q = normalize(new_twist_q)
-    new_twist_q_fbx = fbx.FbxQuaternion(*new_twist_q)
-    new_twist_matr = fbx.FbxAMatrix()
-    new_twist_matr.SetQ(new_twist_q_fbx)
-
-    # initial_side = np.array([1, 0, 0])
-    # rotated_side = swing_q.apply(initial_side)
-    #
-    # desired = normalize(np.array([1, 0, 0]))
-    # rotated_side = normalize(rotated_side)
-    #
-    # # Угол между текущей боковой и желаемой
-    # twist_axis = swing_q.apply(twist_axis)
-    # axis = normalize(twist_axis)
-    # dot = np.clip(np.dot(rotated_side, desired), -1.0, 1.0)
-    # angle = np.arccos(dot)
-    #
-    # # Направление вращения
-    # cross = np.cross(rotated_side, desired)
-    # sign = np.sign(np.dot(cross, axis))
-    # angle *= sign
-    #
-    # twist_rot = R.from_rotvec(axis * angle).as_quat()
-    #
-    # twist_q = fbx.FbxQuaternion(twist_rot[0], twist_rot[1], twist_rot[2], twist_rot[3])
-    #
-    # twist_matr = fbx.FbxAMatrix()
-    # twist_matr.SetQ(twist_q)
-
-    if name == 'left_hip':
-        return swing_matr * twist_matr
-    else:
-        return swing_matr
+    return quat
 
 
 def normalize(v):
     norm = np.linalg.norm(v)
     return v if norm == 0 else v / norm
-
-
-def build_rotation_matrix(direction, twist_reference, parent_rotation):
-    """
-    Строит матрицу вращения с контролем твиста:
-    - direction: основное направление кости (z-ось)
-    - twist_reference: вектор, задающий направление боковой оси (x-ось после ортогонализации)
-    """
-
-    direction = np.linalg.inv(parent_rotation) @ direction
-    twist_reference = np.linalg.inv(parent_rotation) @ twist_reference
-
-    z_axis = normalize(direction)
-
-    # Убираем компоненту вдоль направления
-    twist_proj = twist_reference - np.dot(twist_reference, z_axis) * z_axis
-    x_axis = normalize(twist_proj)
-
-    if np.linalg.norm(x_axis) < 1e-6:
-        # Если twist_reference почти параллелен direction — берём глобальный запасной вариант
-        if abs(z_axis[1]) < 0.99:
-            x_axis = normalize(np.cross([0, 1, 0], z_axis))
-        else:
-            x_axis = normalize(np.cross([1, 0, 0], z_axis))
-
-    y_axis = np.cross(z_axis, x_axis)
-
-    rot_matrix = np.column_stack((x_axis, y_axis, z_axis))
-    return rot_matrix
-
-
-def build_rotation_matrix2(forward, up):
-    forward = normalize(forward)
-    right = normalize(np.cross(up, forward))
-    up_corrected = normalize(np.cross(forward, right))
-    rot_matrix = np.column_stack((right, up_corrected, forward))
-    if np.linalg.det(rot_matrix) < 0:
-        rot_matrix[:, 0] = -rot_matrix[:, 0]
-    return rot_matrix
-
-
-def calculate_rotation3(name, start, cur, end, standard_direction=False, frame_hip=0):
-    direction = normalize(np.array(end, dtype=float) - np.array(cur, dtype=float))
-
-    # Базовый вектор направления
-    if standard_direction:
-        base_direction = np.array([0, 1, 0], dtype=float)
-    else:
-        base_direction = normalize(np.array(cur, dtype=float) - np.array(start, dtype=float))
-
-    # Выравниваем основное направление
-    align_rot = R.align_vectors([direction], [base_direction])[0]
-
-    up_hint = np.array([1, 0, 0])
-    if name == 'hip':
-        up_hint = [1, 0, 1]
-    # if abs(np.dot(direction, up_hint)) > 0.9:
-    #     up_hint = np.array([0, 0, 1])
-    # if name == 'left_collarbone' or name == 'right_collarbone':
-    #     up_hint = np.array([0, 0, 1])
-
-    # Повернем базовый up_hint через align_rot — это то, куда он "попал"
-    rotated_up = align_rot.apply(up_hint)
-
-    # Целевой up (как вектор, перпендикулярный кости)
-    # Правильный up можно задать явно — например, на основе соседних костей
-    # Здесь мы просто проецируем исходный up_hint в плоскость, перпендикулярную direction
-    proj_up = up_hint - np.dot(up_hint, direction) * direction
-    proj_up = normalize(proj_up)
-
-    # То же самое с rotated_up — проекция в ту же плоскость
-    proj_rotated_up = rotated_up - np.dot(rotated_up, direction) * direction
-    proj_rotated_up = normalize(proj_rotated_up)
-
-    # Угол между ними (twist вокруг оси кости)
-    cos_angle = np.clip(np.dot(proj_up, proj_rotated_up), -1.0, 1.0)
-    angle = np.arccos(cos_angle)
-    cross = np.dot(np.cross(proj_rotated_up, proj_up), direction)
-    if cross < 0:
-        angle = -angle
-
-    twist_rot = R.from_rotvec(angle * direction)  # Вращение вокруг оси кости
-
-    # Общий поворот: сначала выравниваем кость, потом корректируем twist
-    final_rot = twist_rot * align_rot
-    return final_rot.as_quat()
-
-
-def calculate_rotation2(frames_landmarks, nodes, bone_structure, name,
-                        start, cur, end, standard_direction=False, frame_=0):
-    direction = np.array(end, dtype=float) - np.array(cur, dtype=float)
-    direction = direction / np.linalg.norm(direction)
-
-    if standard_direction:
-        base_direction = np.array([0, 1, 0], dtype=float)
-    else:
-        base_direction = np.array(cur, dtype=float) - np.array(start, dtype=float)
-        base_direction = base_direction / np.linalg.norm(base_direction)
-
-    rotation_ = R.align_vectors([direction], [base_direction])[0]
-    quat = rotation_.as_quat()
-    quat_np = np.array([quat[0], quat[1], quat[2], quat[3]], dtype=float)
-    quat = R.from_quat(quat_np)
-
-    up_hint = np.array([1, 0, 0])
-    base_hint = np.array([1, 0, 0])
-    if abs(np.dot(direction, up_hint)) >= 0.7:
-        up_hint = np.array([0, 0, 1])
-    if abs(np.dot(base_direction, base_hint)) >= 0.7:
-        base_hint = np.array([0, 0, 1])
-    if name == 'hip':
-        base_hint = [1, 0, 0]
-        up_hint = normalize(frames_landmarks[frame_]['left_hip'] - frames_landmarks[frame_]['hip'])
-    if name == 'left_hip':
-        base_hint = normalize(frames_landmarks[frame_]['left_hip'] - frames_landmarks[frame_]['hip'])
-        # up_hint = quat.apply(base_hint)
-        up_hint = normalize(frames_landmarks[frame_]['left_knee'] - frames_landmarks[frame_]['left_ankle'])
-        if abs(np.dot(direction, up_hint)) >= 0.99:
-            up_hint = normalize(frames_landmarks[frame_]['left_foot_index'] - frames_landmarks[frame_]['left_ankle'])
-    elif name == 'right_hip':
-        # base_hint = normalize(frames_landmarks[frame_]['right_hip'] - frames_landmarks[frame_]['hip'])
-        # up_hint = normalize(frames_landmarks[frame_]['right_knee'] - frames_landmarks[frame_]['right_ankle'])
-        base_hint = np.array([1, 0, 0])
-        up_hint = normalize(frames_landmarks[frame_]['right_hip'] - frames_landmarks[frame_]['hip'])
-        if abs(np.dot(direction, up_hint)) >= 0.99:
-            up_hint = normalize(frames_landmarks[frame_]['right_foot_index'] - frames_landmarks[frame_]['right_ankle'])
-
-    parent_matrix = nodes[bone_structure[name][0]].EvaluateGlobalTransform()
-    parent_matrix = np.array([[parent_matrix.Get(i, j) for j in range(3)] for i in range(3)])
-    if name in ['hip', 'left_hip', 'right_hip']:
-        base_matrix = build_rotation_matrix2(base_direction, base_hint)
-        target_matrix = build_rotation_matrix2(direction, up_hint)
-    else:
-        base_matrix = build_rotation_matrix2(base_direction, base_hint)
-        target_matrix = build_rotation_matrix2(direction, up_hint)
-
-    rot_matrix = target_matrix @ np.linalg.inv(base_matrix)
-    return R.from_matrix(rot_matrix).as_quat()
 
 
 def calculate_rotation(base_direction, direction):
@@ -557,10 +307,12 @@ def add_animation(scene, nodes, landmarks_frames, h_l_n, rotations_by_frame, pro
 
 def create_animation(key_points_data_path, model_path, from_json=True, progress_callback=None, frame_rate='30',
                      mmodel_path=None):
+    print(key_points_data_path, model_path, from_json, frame_rate, mmodel_path)
+
     if from_json:
-        frames_landmarks = metrabs_tools.get_video_data_from_json(key_points_data_path)[0]
+        frames_landmarks = get_video_data_from_json(key_points_data_path)[0]
     else:
-        frames_landmarks = metrabs_tools.get_data_from_video(key_points_data_path, progress_callback, mmodel_path)[0]
+        frames_landmarks = get_data_from_video(key_points_data_path, progress_callback, mmodel_path)[0]
 
     if len(frames_landmarks) == 0:
         return None
@@ -702,12 +454,8 @@ def create_animation(key_points_data_path, model_path, from_json=True, progress_
     total = len(frames_landmarks)
 
     for frame in tqdm(range(1, len(frames_landmarks))):
-        # add_frames = [0.33, 0.66, 1]
-        # else:
-        #     add_frames = [0.5, 1]
         add_frames = [1]
         for t in add_frames:
-            hint = None
             cur_locations = {'root': frames_landmarks[frame]['root']}
             cur_rotations = {}
             for current, (parent, daughter) in bone_structure.items():
@@ -776,20 +524,20 @@ def create_animation(key_points_data_path, model_path, from_json=True, progress_
     add_animation(scene2, nodes2, locations, head_leaf_nodes, rotations, progress_callback, frame_rate)
 
     # Экспорт анимированного FBX
-    print(model_path)
     model_name = model_path.split('/')[-1].split('.')[0]
     video_name = key_points_data_path.split('/')[-1].split('.')[0]
     exporter = fbx.FbxExporter.Create(manager, "")
-    exporter.Initialize(f"animated_models/animated_{model_name}_from_{video_name}.fbx", -1, manager.GetIOSettings())
+    exporter.Initialize(resource_path(f"animated_models/animated_{model_name}_from_{video_name}.fbx"), -1,
+                        manager.GetIOSettings())
     exporter.Export(scene2)
     exporter.Destroy()
     print(f"FBX анимация создана: animated_{model_name}_from_{video_name}.fbx")
 
-    save_path = f"animated_models/animated_{model_name}_from_{video_name}.fbx"
+    save_path = resource_path(f"animated_models/animated_{model_name}_from_{video_name}.fbx")
 
     if not from_json:
         source_path = key_points_data_path
-        destination_path = f"animated_models/animated_{model_name}_from_{video_name}.mp4"
+        destination_path = resource_path(f"animated_models/animated_{model_name}_from_{video_name}.mp4")
         shutil.copy2(source_path, destination_path)
 
     return save_path

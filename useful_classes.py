@@ -5,14 +5,28 @@ import vlc
 
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QPushButton, QLabel, QVBoxLayout,
-    QHBoxLayout, QSpacerItem, QSizePolicy, QFileDialog,
-    QMainWindow, QGraphicsDropShadowEffect, QToolButton, QStyle, QMessageBox, QFrame, QSlider, QComboBox, QProgressBar
+    QHBoxLayout, QGraphicsDropShadowEffect, QToolButton, QStyle, QFrame, QSlider, QProgressBar
 )
-from PyQt5.QtGui import QPixmap, QColor, QLinearGradient, QPalette, QBrush, QImage, QPainterPath, QPainter, QMovie
-from PyQt5.QtCore import Qt, QUrl, QTimer, QCoreApplication, QEvent
 
-vlc_path = r"C:\Program Files\VideoLAN\VLC\libvlc.dll"  # проверь путь
+from PyQt5.QtGui import QColor, QPainterPath, QPainter, QMovie
+from PyQt5.QtCore import Qt, QTimer, QEvent, QObject, pyqtSignal
+
+if getattr(sys, 'frozen', False):
+    base_path = sys._MEIPASS
+    vlc_path = os.path.join(base_path, 'vlc', 'libvlc.dll')
+else:
+    vlc_path = r"C:\Program Files\VideoLAN\VLC\libvlc.dll"
+
 ctypes.CDLL(vlc_path)
+
+
+def resource_path(relative_path):
+    path = None
+    if getattr(sys, 'frozen', False):
+        path = os.path.join(sys._MEIPASS, relative_path)
+    else:
+        path = os.path.join(os.path.abspath("."), relative_path)
+    return path.replace("\\", '/')
 
 
 class GifButton(QPushButton):
@@ -490,9 +504,6 @@ class ProgressOverlay(QWidget):
 
     def update_message(self, message):
         self.label.setText(message)
-
-
-from PyQt5.QtCore import QObject, pyqtSignal
 
 
 class SkeletonWorker(QObject):

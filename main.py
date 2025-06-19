@@ -1,6 +1,6 @@
 import sys
 import tensorflow as tf
-import tensorflow_hub as tfhub
+import tensorflow_hub as tf_hub
 import mediapipe as mp
 
 from PyQt5.QtCore import QPropertyAnimation, QPoint, QRect, QParallelAnimationGroup
@@ -8,12 +8,14 @@ from PyQt5.QtGui import QIcon
 
 from PyQt5.QtWidgets import QApplication, QWidget, QStackedWidget, QVBoxLayout, QSizePolicy, QMainWindow
 
+from useful_classes import resource_path
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AniMotion")
-        self.setWindowIcon(QIcon("Source/Images/AM2.ico"))
+        self.setWindowIcon(QIcon(resource_path("Source/Images/AM2.ico")))
         self.resize(800, 600)
 
         self.stack = QStackedWidget(self)

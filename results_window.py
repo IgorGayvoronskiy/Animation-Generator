@@ -2,17 +2,14 @@ import os
 import sys
 
 import cv2
-from useful_classes import TrapezoidWidget, VideoPlayerPopup, GifButton
-from PyQt5.QtCore import Qt, QCoreApplication, QEvent, QTimer
+from useful_classes import TrapezoidWidget, VideoPlayerPopup, GifButton, resource_path
+from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap, QColor, QLinearGradient, QPalette, QBrush, QImage, QFont, QMovie
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QPushButton, QLabel, QVBoxLayout,
     QHBoxLayout, QSpacerItem, QSizePolicy, QFileDialog,
-    QMainWindow, QGraphicsDropShadowEffect, QComboBox, QProgressBar, QListWidget, QMessageBox, QInputDialog
+    QMainWindow, QGraphicsDropShadowEffect, QListWidget, QMessageBox, QInputDialog
 )
-
-import create_animation_window
-import model_download_window
 
 
 class ResultsWindow(QMainWindow):
@@ -74,7 +71,6 @@ class ResultsWindow(QMainWindow):
 
         central_widget.setLayout(root_layout)
 
-        # Стили
         self.setStyleSheet("""
             QPushButton {
                 background-color: #2c2c2c;
@@ -145,7 +141,6 @@ class ResultsWindow(QMainWindow):
 
         cur_window_btn = archive_btn
 
-        # Сделать кнопки одинаковой ширины
         for btn in [archive_btn, create_btn, upload_btn]:
             btn.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
             btn.setMinimumHeight(10)
@@ -189,7 +184,6 @@ class ResultsWindow(QMainWindow):
 
         nav_widget.setLayout(nav_layout)
 
-        # Эффект тени
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(20)
         shadow.setOffset(0, 4)
@@ -283,9 +277,9 @@ class ResultsWindow(QMainWindow):
         self.animation_list.setContentsMargins(0, 0, 0, 0)
         self.animation_list.currentRowChanged.connect(self.update_animation_preview)
 
-        self.delete_button = GifButton("Source/icons/delete.gif")
-        self.rename_button = GifButton("Source/icons/rename.gif")
-        self.save_button = GifButton("Source/icons/save.gif")
+        self.delete_button = GifButton(resource_path("Source/icons/delete.gif"))
+        self.rename_button = GifButton(resource_path("Source/icons/rename.gif"))
+        self.save_button = GifButton(resource_path("Source/icons/save.gif"))
         self.delete_button.setFixedSize(60, 60)
         self.rename_button.setFixedSize(60, 60)
         self.save_button.setFixedSize(60, 60)
@@ -331,7 +325,7 @@ class ResultsWindow(QMainWindow):
 
         item = self.animation_list.item(index)
         name = item.text()
-        path = f"animated_models/{name}"
+        path = resource_path(f"animated_models/{name}")
         video_path = path.strip('.fbx') + '.mp4'
 
         reply = QMessageBox().question(
@@ -354,9 +348,9 @@ class ResultsWindow(QMainWindow):
                 QMessageBox.warning(self, "Ошибка", str(e))
 
     def play_delete_animation(self):
-        gif_path = "Source/icons/anim_deleted.gif"
+        gif_path = resource_path("Source/icons/anim_deleted.gif")
         if not os.path.exists(gif_path):
-            self.animation_label.setText("Удалено")  # fallback
+            self.animation_label.setText("Удалено")
             return
 
         movie = QMovie(gif_path)
@@ -380,15 +374,15 @@ class ResultsWindow(QMainWindow):
 
         item = self.animation_list.item(index)
         old_name = item.text()
-        old_path = f"animated_models/{old_name}"
+        old_path = resource_path(f"animated_models/{old_name}")
 
         old_video_name = old_name.strip('.fbx') + '.mp4'
-        old_video_path = f"animated_models/{old_video_name}"
+        old_video_path = resource_path(f"animated_models/{old_video_name}")
 
         new_name, ok = QInputDialog.getText(self, "Переименование", "Новое имя файла (с расширением .fbx):",
                                             text=old_name)
         if ok and new_name:
-            new_path = f"animated_models/{new_name}"
+            new_path = resource_path(f"animated_models/{new_name}")
             new_video_path = new_path.strip('.fbx') + '.mp4'
             if os.path.exists(new_path):
                 QMessageBox.warning(self, "Ошибка", "Файл с таким именем уже существует.")
@@ -409,7 +403,7 @@ class ResultsWindow(QMainWindow):
 
         item = self.animation_list.item(index)
         name = item.text()
-        source_path = f"animated_models/{name}"
+        source_path = resource_path(f"animated_models/{name}")
 
         save_path, _ = QFileDialog.getSaveFileName(
             self, "Сохранить как", name, "FBX файлы (*.fbx)"
@@ -422,17 +416,14 @@ class ResultsWindow(QMainWindow):
                 QMessageBox.warning(self, "Ошибка", str(e))
 
     def display_first_frame(self, video_path):
-        # Используем OpenCV для извлечения первого кадра
         cap = cv2.VideoCapture(video_path)
         if cap.isOpened():
             ret, frame = cap.read()
             if ret:
-                # Преобразуем кадр в формат, который может быть использован в PyQt
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 height, width, _ = frame_rgb.shape
                 byte_array = frame_rgb.tobytes()
 
-                # Создаем QPixmap
                 qimage = QImage(byte_array, width, height, QImage.Format_RGB888)
                 self.animation_label.setPixmap(QPixmap(qimage).scaled(self.animation_label.size(), Qt.KeepAspectRatio))
             else:
@@ -453,18 +444,17 @@ class ResultsWindow(QMainWindow):
         if self.video_player_window is not None:
             self.video_player_window.close()
 
-        # Открываем новое окно с плеером
         self.video_player_window = VideoPlayerPopup(self.video_path, parent=self)
         self.video_player_window.show()
 
     def load_animations(self):
-        animations_dir = "animated_models"
+        animations_dir = resource_path("animated_models")
         if not os.path.exists(animations_dir):
             return
 
         animation_files = [
             f for f in os.listdir(animations_dir)
-            if f.lower().endswith('.fbx')  # можно расширить по необходимости
+            if f.lower().endswith('.fbx')
         ]
 
         self.animation_list.clear()
@@ -483,7 +473,7 @@ class ResultsWindow(QMainWindow):
         animation_name = self.animation_list.item(index).text()
         base_name = os.path.splitext(animation_name)[0]
 
-        self.video_path = f"animated_models/{base_name}.mp4"
+        self.video_path = resource_path(f"animated_models/{base_name}.mp4")
 
         if self.video_path is not None and os.path.exists(self.video_path):
             self.display_first_frame(self.video_path)
